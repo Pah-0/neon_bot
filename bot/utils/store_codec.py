@@ -69,11 +69,13 @@ def encode(value, path="value"):
         if name:
             return {TAG: "class", "value": name}
     elif isinstance(value, ProtoMessage):
-        # Parsing a protobuf can't run code, unlike unpickling
+        # Parsing a protobuf can't run code, unlike unpickling.
+        # Partial: neonize.Message has proto2 required fields that can be
+        # unset (e.g. on a replied-to message); parsing doesn't check them.
         return {
             TAG: "proto",
             "class": value.DESCRIPTOR.full_name,
-            "value": _b64(value.SerializeToString()),
+            "value": _b64(value.SerializePartialToString()),
         }
     raise TypeError(f"Can't store {type(value).__name__} at {path}")
 
