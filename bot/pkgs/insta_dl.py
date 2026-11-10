@@ -55,17 +55,6 @@ SHORTCODE_RE = re.compile(
 STORY_RE = re.compile(r"instagram\.com/stories/([^/]+)/(\d+)")
 SHARE_RE = re.compile(r"instagram\.com/share(?:/(?:reels?|video|s|p))?/(?P<id>[^/?]+)")
 
-MOBILE_HEADERS = {
-    "x-ig-app-locale": "en_US",
-    "x-ig-device-locale": "en_US",
-    "x-ig-mapped-locale": "en_US",
-    "user-agent": "Instagram 275.0.0.27.98 Android (33/13; 280dpi; 720x1423; Xiaomi; Redmi 7; onclite; qcom; en_US; 458229237)",
-    "accept-language": "en-US",
-    "x-fb-http-engine": "Liger",
-    "x-fb-client-ip": "True",
-    "x-fb-server-cluster": "True",
-}
-
 # must be the complete canonical string; shorter variants get an empty shell
 CRAWLER_HEADERS = {
     "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
@@ -141,13 +130,17 @@ def _get_object_from_entries(name: str, data: str):
 
 
 async def _get_gql_params(client: httpx.AsyncClient, shortcode: str):
-    resp = await client.get(
-        f"https://www.instagram.com/p/{shortcode}/",
-        headers=WEB_HEADERS,
-        follow_redirects=True,
-    )
-    resp.raise_for_status()
-    html = resp.text
+    # the page only refreshes the tokens below; the query also works with the
+    # defaults, so a login wall or rate limit here must not fail the step
+    html = ""
+    try:
+        resp = await client.get(
+            f"https://www.instagram.com/p/{shortcode}/", headers=WEB_HEADERS
+        )
+        if resp.status_code == 200:
+            html = resp.text
+    except httpx.HTTPError:
+        pass
 
     site_data = _get_object_from_entries("SiteData", html)
     polaris_site_data = _get_object_from_entries("PolarisSiteData", html)
@@ -555,28 +548,6 @@ def _parse_igram_items(raw_items: list) -> list[DownloadResult]:
     return results
 
 
-async def _get_media_id(client: httpx.AsyncClient, shortcode: str) -> str | None:
-    client.cookies.clear()
-    resp = await client.get(
-        "https://i.instagram.com/api/v1/oembed/",
-        params={"url": f"https://www.instagram.com/p/{shortcode}/"},
-        headers=MOBILE_HEADERS,
-    )
-    return resp.json().get("media_id")
-
-
-async def _get_mobile_media(client: httpx.AsyncClient, media_id: str) -> dict:
-    client.cookies.clear()
-    resp = await client.get(
-        f"https://i.instagram.com/api/v1/media/{media_id}/info/",
-        headers=MOBILE_HEADERS,
-    )
-    items = resp.json().get("items")
-    if not items:
-        raise RuntimeError("mobile API returned no items")
-    return items[0]
-
-
 async def _get_crawler_media(client: httpx.AsyncClient, shortcode: str) -> dict:
     client.cookies.clear()  # googlebot UA + cookies would be incoherent
     resp = await client.get(
@@ -607,11 +578,9 @@ async def _get_crawler_media(client: httpx.AsyncClient, shortcode: str) -> dict:
     raise RuntimeError("xig_polaris_media not found in crawler page")
 
 
-async def _extract_mobile(client, shortcode):
-    media_id = await _get_media_id(client, shortcode)
-    if not media_id:
-        raise RuntimeError("no media_id from oembed")
-    return _parse_new_media(await _get_mobile_media(client, media_id))
+async def _extract_gql(client, shortcode):
+    client.cookies.clear()
+    return _parse_new_media(await _get_gql_media(client, shortcode))
 
 
 async def _extract_crawler(client, shortcode):
@@ -640,6 +609,33 @@ async def _download_file(
                 done += len(chunk)
                 if progress_callback:
                     await progress_callback(done, total, dest)
+
+
+def _sniff_media_type(path: str) -> str | None:
+    """Returns "video" or "image" from the file's first bytes, None if unknown."""
+    with open(path, "rb") as f:
+        head = f.read(12)
+    if head[:3] == b"\xff\xd8\xff" or head[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image"
+    if head[4:8] == b"ftyp":
+        if head[8:12] in (b"heic", b"heix", b"heif", b"mif1", b"avif"):
+            return "image"
+        return "video"
+    return None
+
+
+def _fix_media_type(item: DownloadResult) -> None:
+    """snapsave labels photos as videos: trust the downloaded file instead."""
+    actual = _sniff_media_type(item.local_path)
+    if not actual or actual == item.media_type:
+        return
+    ext = "mp4" if actual == "video" else "jpg"
+    dest = f"{os.path.splitext(item.local_path)[0]}.{ext}"
+    os.replace(item.local_path, dest)
+    item.local_path = dest
+    item.media_type = actual
 
 
 async def download_instagram(
@@ -704,8 +700,9 @@ async def download_instagram(
                 print(f"[down] {fname}  ({item.media_type})")
             await _download_file(client, item.source_url, dest, progress_callback)
             item.local_path = dest
+            _fix_media_type(item)
             if not quiet:
-                print(f"[ok] -> {dest}")
+                print(f"[ok] -> {item.local_path}")
             return [item]
 
         # 3. Post / reel / IGTV
@@ -729,7 +726,7 @@ async def download_instagram(
             return _result_to_items(await try_snapsave(url))
 
         steps = [
-            ("mobile API", lambda: _extract_mobile(client, shortcode)),
+            ("graphql", lambda: _extract_gql(client, shortcode)),
             ("crawler page", lambda: _extract_crawler(client, shortcode)),
             ("embed page", via_embed),
             ("snapsave", via_snapsave),
@@ -766,8 +763,9 @@ async def download_instagram(
                 print(f"\n[down] {fname}  ({item.media_type})")
             await _download_file(client, item.source_url, dest, progress_callback)
             item.local_path = dest
+            _fix_media_type(item)
             if not quiet:
-                print(f"[ok] -> {dest}")
+                print(f"[ok] -> {item.local_path}")
             if i < len(items) - 1:
                 await asyncio.sleep(0.5)
 
