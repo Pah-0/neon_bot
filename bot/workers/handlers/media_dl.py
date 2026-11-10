@@ -8,6 +8,7 @@ from urlextract import URLExtract
 from bot.config import bot
 from bot.pkgs.insta_dl import is_valid_instagram_url
 from bot.pkgs.pinterest_dl import is_valid_pinterest_url
+from bot.pkgs.spotify_dl import is_valid_spotify_url
 from bot.pkgs.tiktok_dl import is_valid_tiktok_url, resolve_short_url
 from bot.pkgs.twitter_dl import is_valid_twitter_url
 from bot.utils.bot_utils import image_to_png, read_binary, sync_to_async
@@ -27,6 +28,7 @@ from bot.utils.ytdl_utils import (
     get_video_name,
     is_supported,
     is_valid_trim_args,
+    spotify_to_ytmusic,
 )
 
 
@@ -100,6 +102,7 @@ async def youtube_reply(event: Event, args: str, client):
     Pinterest, TikTok and Twitter/X, which use dedicated downloaders first and
     fall back to yt-dlp. YouTube Music links are sent as mp3, YouTube posts as
     images, playlists as a folder upload. Files over 100MB are sent as documents.
+    Spotify track links are looked up on YouTube Music and sent as mp3.
 
     Message options:
         #no_ytdl - Skip this message
@@ -135,13 +138,14 @@ async def youtube_reply(event: Event, args: str, client):
                 continue
             extractors_checkers = [
                 is_supported,
+                is_valid_spotify_url,
                 is_valid_instagram_url,
                 is_valid_pinterest_url,
                 is_valid_tiktok_url,
                 is_valid_twitter_url,
             ]
             if only_use_ytdl:
-                del extractors_checkers[1:]
+                del extractors_checkers[2:]
             for check in extractors_checkers:
                 if check(url):
                     supported_links.append(url)
@@ -186,6 +190,8 @@ async def youtube_reply(event: Event, args: str, client):
         while job:
             ytdl = None
             try:
+                if is_valid_spotify_url(job[0]):
+                    job[0] = await spotify_to_ytmusic(job[0])
                 alt_listener = listener = MediaListener(job[0])
                 tryAlt = False
 
