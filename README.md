@@ -5,7 +5,7 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 ## Features
 
 ### 📥 Media Downloaders
-- **Auto Downloader**: Send a link from YouTube, Instagram, TikTok, Twitter/X, Pinterest or any other [yt-dlp](https://github.com/yt-dlp/yt-dlp) supported site and the bot downloads and uploads it (enable per chat with `.ytdl_enable`).
+- **Auto Downloader**: Send a link from YouTube, Instagram, TikTok, Twitter/X, Pinterest or any other [yt-dlp](https://github.com/yt-dlp/yt-dlp) supported site and the bot downloads and uploads it (enable per chat with `.ytdl_enable`). Spotify track links are fetched from YouTube Music.
   - Add `#no_ytdl` to a message to skip it, or `#yt-dlp-only` to force yt-dlp.
   - Trim videos during download using bracketed arguments (e.g., `[00:10-00:20]`).
 - **TikTok**: Download TikTok videos with `.tikmate`.

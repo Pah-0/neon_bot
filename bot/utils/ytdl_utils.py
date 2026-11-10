@@ -6,12 +6,14 @@ import uuid
 from os import listdir
 from os import path as ospath
 from re import search as re_search
+from urllib.parse import quote_plus
 
 from yt_dlp import DownloadError, YoutubeDL, extractor
 from yt_dlp.utils import download_range_func
 
 from bot.config import bot
 from bot.others.exceptions import NormalizeVidError
+from bot.pkgs.spotify_dl import get_spotify_track
 
 from .bot_utils import (
     is_valid_video_timestamp,
@@ -71,6 +73,37 @@ def extract_info(link, options=None):
         if result is None:
             raise ValueError(logger_.exc)
         return result
+
+
+def search_ytmusic(query):
+    """Returns the link of the first song YouTube Music finds for query, or None."""
+    options = {
+        "cookiefile": ".cookies.txt",
+        "extract_flat": True,
+        "ignoreerrors": True,
+        "logger": ExtractLogger(),
+        "playlistend": 1,
+    }
+    with YoutubeDL(options) as ydl:
+        result = ydl.extract_info(
+            f"https://music.youtube.com/search?q={quote_plus(query)}#songs",
+            download=False,
+        )
+    for entry in (result or {}).get("entries") or []:
+        if entry and entry.get("id"):
+            return f"https://music.youtube.com/watch?v={entry['id']}"
+    return None
+
+
+async def spotify_to_ytmusic(url):
+    """Returns the YouTube Music link of the song a Spotify track link points to."""
+    track = await get_spotify_track(url)
+    query = f"{' '.join(track.artists)} {track.title}".strip()
+    link = await sync_to_async(search_ytmusic, query)
+    if not link:
+        raise ValueError(f"'{query}' not found on YouTube Music")
+    log(e=f"Spotify: {url} -> {link} ({query})")
+    return link
 
 
 def is_valid_trim_args(args: str, total_dur: float | None = None) -> bool:
