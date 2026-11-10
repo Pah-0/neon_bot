@@ -75,6 +75,9 @@ TARGETS = {
         "sq sr st sv sw ta te tg th tk tl tr tt ug uk ur uz vi xh yo zh zu"
     ).split()
 }
+# Languages Google can translate from when told the source, by detected code.
+# Google has no Nigerian Pidgin but reads it well as Krio, a close relative
+SOURCES = {**TARGETS, "pcm": "kri"}
 
 # Short or ambiguous messages ("ok", "lol") are left alone
 MIN_LETTERS = 12
@@ -84,7 +87,10 @@ WIDE_LETTER = 3
 _wide = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]"
 )
-MIN_CONFIDENCE = 0.8
+# A short sentence rarely scores higher than this even when its language is
+# clear, so it also has to score this many times the next likeliest language
+MIN_CONFIDENCE = 0.5
+MIN_LEAD = 4
 # Longest text sent to Google at once; longer parts go in pieces
 MAX_CHARS = 5000
 # Longer messages aren't translated
@@ -97,6 +103,8 @@ WEB_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Referer": "https://translate.google.com",
 }
+# Google's Japanese keyboard, which turns romaji into kana and kanji
+IME_URL = "https://inputtools.google.com/request"
 
 # The bot's translation reply to each recent message, by (chat, message id), so
 # it can be updated when the message is edited
@@ -104,9 +112,31 @@ replies = LimitedDict(maxsize=256)
 # An edit that comes in while the message is still being translated waits
 reply_locks = KeyedLock()
 
+# Start of the bot's translation replies
+HEADER = "🌐 _Translated from "
+
 _noise = re.compile(r"https?://\S+|www\.\S+|@\d+|```.*?```|[*_~`>]", re.S)
 _mention = re.compile(r"@(\d{5,16})")
 _quote = re.compile(r"(?m)^>(?=[^\s>])")
+
+# Japanese in Latin letters (romaji): every word is made of Japanese syllables,
+# and one is a common Japanese word, as plenty of Swahili, Indonesian and even
+# English ("I hate you") is made of the same syllables
+_macrons = str.maketrans({"ā": "aa", "ī": "ii", "ū": "uu", "ē": "ee", "ō": "ou"})
+_word = re.compile(r"[^\W\d_]+(?:['-][^\W\d_]+)*")
+_romaji_word = re.compile(
+    r"(?:(?:([kgsztdhbpfjm])(?=\1)|t(?=ch))?"
+    r"(?:sh|ch|ts|[kgnhbpmr]y|[kgsztdnhbpmrfjwy])?[aeiou]|n'?|-)+"
+)
+_japanese_word = re.compile(
+    r"watashi|boku|ore|anata|kimi|kore|doko|desu|deshita|deshou|janai|\w*ma(su|shita|sen|shou)|"
+    r"konnichiwa|konbanwa|ohayou?|arigatou?|sumimasen|gomen(nasai)?|daijou?bu|sugoi|"
+    r"kawaii|nande|doushite|kudasai|onegai|sayou?nara|yoroshiku|oyasumi|ganbatte|"
+    r"senpai|sensei|daisuki|shiteru|hontou?"
+)
+# The particles は and を, which Google's keyboard runs into the words around them
+_particle = re.compile(r"(?<![\w'-])(wa|wo)(?![\w'-])")
+_romaji_run = re.compile(r"[a-z'-]+(?:[ \t]+[a-z'-]+)*")
 
 
 @cache
@@ -128,6 +158,39 @@ def family(code: str) -> str:
     return FAMILY.get(code, code)
 
 
+def is_romaji(text: str) -> bool:
+    words = _word.findall(_noise.sub(" ", text).casefold().translate(_macrons))
+    return all(_romaji_word.fullmatch(w) for w in words) and any(
+        _japanese_word.fullmatch(w) for w in words
+    )
+
+
+def _ime(text: str) -> str:
+    params = {"text": text, "itc": "ja-t-i0-und", "num": 1}
+    with urllib.request.urlopen(f"{IME_URL}?{urlencode(params)}", timeout=20) as resp:
+        status, segments = json.loads(resp.read())
+    if status != "SUCCESS":
+        raise ValueError(f"Google's Japanese keyboard answered {status}")
+    return "".join(segment[1][0] for segment in segments)
+
+
+def romaji_to_japanese(text: str) -> str:
+    """
+    Romaji in Japanese script, which Google translates (romaji it gives back as
+    it is). The words between particles go to Google's keyboard without spaces,
+    as they'd be typed.
+    """
+
+    def convert(run: re.Match) -> str:
+        return "".join(
+            {"wa": "は", "wo": "を"}.get(part) or _ime(re.sub(r"[\s'-]", "", part))
+            for part in _particle.split(run[0])
+            if part.strip(" \t'-")
+        )
+
+    return _romaji_run.sub(convert, text.casefold().translate(_macrons))
+
+
 def classify(text: str) -> str | None:
     """The text's language, or None when it's too short or unclear"""
     text = _noise.sub(" ", text)
@@ -135,8 +198,11 @@ def classify(text: str) -> str | None:
     letters += (WIDE_LETTER - 1) * len(_wide.findall(text))
     if letters < MIN_LETTERS:
         return None
-    lang, prob = identifier().classify(text)
-    if prob < MIN_CONFIDENCE or lang not in LANGUAGES:
+    # The language model only knows Japanese in Japanese script
+    if is_romaji(text):
+        return "ja"
+    (lang, prob), (_, runner_up) = identifier().rank(text)[:2]
+    if prob < MIN_CONFIDENCE or prob < MIN_LEAD * runner_up or lang not in LANGUAGES:
         return None
     return lang
 
@@ -174,8 +240,8 @@ def pieces(text: str) -> list[str]:
     return [piece for piece in result if piece.strip()]
 
 
-def _post_translate(text: str, target: str) -> list:
-    params = {"client": "gtx", "sl": "auto", "tl": TARGETS[target], "dt": "t"}
+def _post_translate(text: str, target: str, source: str) -> list:
+    params = {"client": "gtx", "sl": source, "tl": TARGETS[target], "dt": "t"}
     request = urllib.request.Request(
         f"{GOOGLE_URL}?{urlencode(params)}", data=urlencode({"q": text}).encode()
     )
@@ -183,10 +249,10 @@ def _post_translate(text: str, target: str) -> list:
         return json.loads(resp.read())
 
 
-async def translate_web(text: str, target: str) -> str:
+async def translate_web(text: str, target: str, source: str = "auto") -> str:
     """Translates through the translate.google.com page's API"""
     compact = {"separators": (",", ":")}
-    request = json.dumps([[text, "auto", TARGETS[target], True], [None]], **compact)
+    request = json.dumps([[text, source, TARGETS[target], True], [None]], **compact)
     params = {
         "rpcids": WEB_RPC,
         "bl": "boq_translate-webserver_20201207.13_p0",
@@ -211,14 +277,21 @@ async def translate_web(text: str, target: str) -> str:
     raise ValueError("No translation in the reply")
 
 
-async def translate(text: str, target: str) -> str:
+async def translate(text: str, target: str, source: str = "auto") -> str:
     try:
         # urllib, not aiohttp or httpx: Google answers those with 429 here
-        data = await sync_to_async(_post_translate, text, target)
+        data = await sync_to_async(_post_translate, text, target, source)
         return "".join(part[0] for part in data[0] if part and part[0])
     except Exception as e:
         log(e=f"Google's gtx endpoint failed ({e}); using the web page API", debug=True)
-        return await translate_web(text, target)
+        return await translate_web(text, target, source)
+
+
+async def translate_long(text: str, target: str, source: str = "auto") -> str:
+    """Translates text of any length, a piece at a time"""
+    return "\n".join(
+        [(await translate(p, target, source)).strip("\n") for p in pieces(text)]
+    )
 
 
 def same_text(a: str, b: str) -> bool:
@@ -242,9 +315,16 @@ async def translation_for(event, text: str | None) -> str | None:
         if not lang or family(lang) == target or family(lang) in ignore:
             continue
         try:
-            translated = "\n".join(
-                [(await translate(p, target)).strip("\n") for p in pieces(part)]
-            )
+            if family(lang) == "ja" and is_romaji(part):
+                japanese = await sync_to_async(romaji_to_japanese, part)
+                translated = await translate_long(japanese, target, "ja")
+            else:
+                translated = await translate_long(part, target)
+                # Google's own guess can be the target language (Pidgin full of
+                # English words), so it's asked again with the language found here
+                source = SOURCES.get(family(lang))
+                if same_text(translated, part) and source:
+                    translated = await translate_long(part, target, source)
         except Exception:
             # Not worth a log chat message for every message
             return log(Exception, warning=True)
@@ -261,19 +341,21 @@ async def translation_for(event, text: str | None) -> str | None:
     translated = _mention.sub("@⁠\\1", "\n\n".join(translations))
     translated = _quote.sub("> ", translated)
     names = ", ".join(langs[:-1]) + (" and " if len(langs) > 1 else "") + langs[-1]
-    return f"🌐 _Translated from {names}:_\n{translated}"
+    return f"{HEADER}{names}:_\n{translated}"
 
 
 async def auto_translate(event, _, client):
     """
     Automatic handler (not a command): replies with a translation when a message
-    isn't in the chat's language (see autotranslate). When the message is
-    edited, the translation is updated, or removed if it's no longer needed.
+    isn't in the chat's language (see autotranslate), the bot owner's own
+    messages included. When the message is edited, the translation is updated,
+    or removed if it's no longer needed.
     """
     try:
-        if event.outgoing:
-            return
         text = event.text or event.caption
+        # Never a translation of a translation
+        if text and text.startswith(HEADER):
+            return
         key = (event.chat.id, event.edited_id if event.is_edit else event.id)
         async with reply_locks(key):
             old = replies.get(key)
