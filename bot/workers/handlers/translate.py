@@ -134,7 +134,8 @@ _japanese_word = re.compile(
     r"kawaii|nande|doushite|kudasai|onegai|sayou?nara|yoroshiku|oyasumi|ganbatte|"
     r"senpai|sensei|daisuki|shiteru|hontou?"
 )
-# The particles は and を, which Google's keyboard runs into the words around them
+# The particles は and を, which Google's keyboard runs into the words
+# around them
 _particle = re.compile(r"(?<![\w'-])(wa|wo)(?![\w'-])")
 _romaji_run = re.compile(r"[a-z'-]+(?:[ \t]+[a-z'-]+)*")
 
@@ -321,7 +322,8 @@ async def translation_for(event, text: str | None) -> str | None:
             else:
                 translated = await translate_long(part, target)
                 # Google's own guess can be the target language (Pidgin full of
-                # English words), so it's asked again with the language found here
+                # English words), so it's asked again with the language found
+                # here
                 source = SOURCES.get(family(lang))
                 if same_text(translated, part) and source:
                     translated = await translate_long(part, target, source)
