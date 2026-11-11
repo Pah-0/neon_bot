@@ -8,6 +8,7 @@ from sqlalchemy import (
     String,
     and_,
     delete,
+    func,
     inspect,
     select,
     text,
@@ -322,13 +323,28 @@ async def flush_messages():
 # that are still effectively current.
 MIN_MSG_STORE_STALE = 86400  # 1 day
 
+# Don't bother deleting until this many rows have actually piled up: with an
+# hourly run, only a handful of messages cross the staleness cutoff each
+# time, so without this every run does a small delete. Batching them up
+# means cleanup runs (and logs) land every so often instead of every hour.
+MIN_CLEAN_COUNT = 500
+
 
 async def clean_stale_messages() -> int:
-    """Delete messages older than conf.MSG_STORE_STALE seconds (floor: MIN_MSG_STORE_STALE)."""
+    """
+    Delete messages older than conf.MSG_STORE_STALE seconds (floor:
+    MIN_MSG_STORE_STALE), but only once at least MIN_CLEAN_COUNT of them
+    have piled up.
+    """
     stale_after = max(conf.MSG_STORE_STALE, MIN_MSG_STORE_STALE)
     # neonize stores message timestamps in milliseconds
     cutoff = int((time.time() - stale_after) * 1000)
     async with async_session() as session:
+        stale_count = await session.scalar(
+            select(func.count()).select_from(Message).where(Message.timestamp < cutoff)
+        )
+        if not stale_count or stale_count < MIN_CLEAN_COUNT:
+            return 0
         async with session.begin():
             result = await session.execute(
                 delete(Message).where(Message.timestamp < cutoff)
