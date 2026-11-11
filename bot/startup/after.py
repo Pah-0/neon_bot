@@ -12,11 +12,17 @@ from bot.utils.msg_rank import scheduler2
 from bot.utils.msg_store import Base as sql_base
 from bot.utils.msg_store import auto_clean_msg, auto_save_msg, engine, migrate_msg_store
 from bot.utils.msg_utils import send_presence
-from bot.utils.os_utils import PR_RESULT_FILE, PR_STATE_FILE
+from bot.utils.os_utils import PR_RESULT_FILE, PR_STATE_FILE, enshell
 from bot.utils.rss_utils import scheduler
 from bot.utils.runtime import shutdown_services
 from bot.workers.auto.reminder import reschedule_all
 from bot.workers.auto.reminder import scheduler as reminder_scheduler
+
+
+async def short_sha():
+    """Current commit, short form, or '?' if git isn't available."""
+    process, stdout, _ = await enshell(["git", "rev-parse", "--short", "HEAD"])
+    return stdout.strip() if process.returncode == 0 else "?"
 
 
 async def onrestart():
@@ -28,7 +34,11 @@ async def onrestart():
             if s == "True":
                 msg = f"*Updated to >>>* {bot.version}"
             else:
-                msg = "*No major update found!*\n" f"Bot restarted! {enmoji()}"
+                msg = (
+                    "*No major update found!*\n"
+                    f"*Now at* `{await short_sha()}`\n"
+                    f"Bot restarted! {enmoji()}"
+                )
         elif sys.argv[1].startswith("prtest"):
             msg = pr_test_msg()
         else:
