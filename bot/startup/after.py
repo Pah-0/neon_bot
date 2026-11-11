@@ -31,8 +31,13 @@ async def onrestart():
             msg = "*Restarted!*"
         elif sys.argv[1].startswith("update"):
             # version_bumped: version.txt changed. pulled: HEAD moved, even
-            # if version.txt didn't (see updater() in bot/utils/os_utils.py)
-            version_bumped, pulled = (p == "True" for p in sys.argv[1].split()[1:3])
+            # if version.txt didn't (see updater() in bot/utils/os_utils.py).
+            # A restart mid-update can exec into this new code with the old,
+            # shorter argv (no "pulled" token): default it to True, the safer
+            # of the two restart messages, rather than fail to parse it.
+            parts = sys.argv[1].split()[1:3]
+            version_bumped = parts[0] == "True" if parts else False
+            pulled = parts[1] == "True" if len(parts) > 1 else True
             if version_bumped:
                 msg = f"*Updated to >>>* {bot.version}"
             elif pulled:
