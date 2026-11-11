@@ -12,11 +12,17 @@ from bot.utils.msg_rank import scheduler2
 from bot.utils.msg_store import Base as sql_base
 from bot.utils.msg_store import auto_clean_msg, auto_save_msg, engine, migrate_msg_store
 from bot.utils.msg_utils import send_presence
-from bot.utils.os_utils import PR_RESULT_FILE, PR_STATE_FILE
+from bot.utils.os_utils import PR_RESULT_FILE, PR_STATE_FILE, enshell
 from bot.utils.rss_utils import scheduler
 from bot.utils.runtime import shutdown_services
 from bot.workers.auto.reminder import reschedule_all
 from bot.workers.auto.reminder import scheduler as reminder_scheduler
+
+
+async def short_sha():
+    """Current commit, short form, or '?' if git isn't available."""
+    process, stdout, _ = await enshell(["git", "rev-parse", "--short", "HEAD"])
+    return stdout.strip() if process.returncode == 0 else "?"
 
 
 async def onrestart():
@@ -24,11 +30,19 @@ async def onrestart():
         if sys.argv[1] == "restart":
             msg = "*Restarted!*"
         elif sys.argv[1].startswith("update"):
-            s = sys.argv[1].split()[1]
-            if s == "True":
+            # version_bumped: version.txt changed. pulled: HEAD moved, even
+            # if version.txt didn't (see updater() in bot/utils/os_utils.py)
+            version_bumped, pulled = (p == "True" for p in sys.argv[1].split()[1:3])
+            if version_bumped:
                 msg = f"*Updated to >>>* {bot.version}"
+            elif pulled:
+                msg = (
+                    "*No major update found!*\n"
+                    f"*Now at* `{await short_sha()}`\n"
+                    f"Bot restarted! {enmoji()}"
+                )
             else:
-                msg = "*No major update found!*\n" f"Bot restarted! {enmoji()}"
+                msg = "*No update found!*\n" f"Bot restarted! {enmoji()}"
         elif sys.argv[1].startswith("prtest"):
             msg = pr_test_msg()
         else:
