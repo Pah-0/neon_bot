@@ -327,7 +327,8 @@ MIN_MSG_STORE_STALE = 86400  # 1 day
 # hourly run, only a handful of messages cross the staleness cutoff each
 # time, so without this every run does a small delete. Batching them up
 # means cleanup runs (and logs) land every so often instead of every hour.
-MIN_CLEAN_COUNT = 500
+# ~200 rows/hr cross the cutoff on average, so 5000 lands roughly once a day.
+MIN_CLEAN_COUNT = 5000
 
 
 async def clean_stale_messages() -> int:
