@@ -317,10 +317,17 @@ async def flush_messages():
     await fut
 
 
+# Floor for conf.MSG_STORE_STALE: a too-small value (misconfigured, or meant
+# to just mean "clean up old junk") shouldn't be able to wipe out messages
+# that are still effectively current.
+MIN_MSG_STORE_STALE = 86400  # 1 day
+
+
 async def clean_stale_messages() -> int:
-    """Delete messages older than conf.MSG_STORE_STALE seconds."""
+    """Delete messages older than conf.MSG_STORE_STALE seconds (floor: MIN_MSG_STORE_STALE)."""
+    stale_after = max(conf.MSG_STORE_STALE, MIN_MSG_STORE_STALE)
     # neonize stores message timestamps in milliseconds
-    cutoff = int((time.time() - conf.MSG_STORE_STALE) * 1000)
+    cutoff = int((time.time() - stale_after) * 1000)
     async with async_session() as session:
         async with session.begin():
             result = await session.execute(
@@ -329,10 +336,9 @@ async def clean_stale_messages() -> int:
         return result.rowcount or 0
 
 
-async def auto_clean_msg(interval: int = 3600, initial_delay: int = 60):
+async def auto_clean_msg(interval: int = 3600):
     if conf.MSG_STORE_STALE <= 0:
         return
-    await asyncio.sleep(initial_delay)
     while True:
         try:
             async with msg_store_lock:
