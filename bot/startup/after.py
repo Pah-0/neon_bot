@@ -30,15 +30,19 @@ async def onrestart():
         if sys.argv[1] == "restart":
             msg = "*Restarted!*"
         elif sys.argv[1].startswith("update"):
-            s = sys.argv[1].split()[1]
-            if s == "True":
+            # version_bumped: version.txt changed. pulled: HEAD moved, even
+            # if version.txt didn't (see updater() in bot/utils/os_utils.py)
+            version_bumped, pulled = (p == "True" for p in sys.argv[1].split()[1:3])
+            if version_bumped:
                 msg = f"*Updated to >>>* {bot.version}"
-            else:
+            elif pulled:
                 msg = (
                     "*No major update found!*\n"
                     f"*Now at* `{await short_sha()}`\n"
                     f"Bot restarted! {enmoji()}"
                 )
+            else:
+                msg = "*No update found!*\n" f"Bot restarted! {enmoji()}"
         elif sys.argv[1].startswith("prtest"):
             msg = pr_test_msg()
         else:

@@ -55,29 +55,43 @@ def re_x(i=None, msg=None):
         os.execl(sys.executable, sys.executable, "-m", "bot", i, msg)
 
 
+def _git_short_sha():
+    try:
+        return bashrun(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+    except Exception:
+        return ""
+
+
 def updater(msg=None, mode="update"):
     """
     Run update.py and restart. mode is what the restarted bot reports:
-    "update" (whether the version changed) or "prtest" (the PR switched to).
+    "update" (whether the version changed, and whether HEAD moved even if it
+    didn't) or "prtest" (the PR switched to).
     """
     try:
         with open(version_file, "r") as file:
             ver = file.read()
+        sha = _git_short_sha()
         qclean()
         Path("update").touch()
         bashrun([sys.executable, "update.py"])
         with open(version_file, "r") as file:
             ver2 = file.read()
 
-        if ver != ver2:
-            vmsg = True
-        else:
-            vmsg = False
+        vmsg = ver != ver2
+        pulled = _git_short_sha() != sha
 
         if msg:
             message = f"{msg.chat.id}:{msg.id}:{msg.chat.server}"
             os.execl(
-                sys.executable, sys.executable, "-m", "bot", f"{mode} {vmsg}", message
+                sys.executable,
+                sys.executable,
+                "-m",
+                "bot",
+                f"{mode} {vmsg} {pulled}",
+                message,
             )
         else:
             os.execl(sys.executable, sys.executable, "-m", "bot")
