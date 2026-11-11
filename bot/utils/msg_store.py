@@ -329,9 +329,10 @@ async def clean_stale_messages() -> int:
         return result.rowcount or 0
 
 
-async def auto_clean_msg(interval: int = 3600):
+async def auto_clean_msg(interval: int = 3600, initial_delay: int = 60):
     if conf.MSG_STORE_STALE <= 0:
         return
+    await asyncio.sleep(initial_delay)
     while True:
         try:
             async with msg_store_lock:
