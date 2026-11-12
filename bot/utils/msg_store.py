@@ -340,16 +340,17 @@ async def clean_stale_messages() -> int:
     stale_after = max(conf.MSG_STORE_STALE, MIN_MSG_STORE_STALE)
     # neonize stores message timestamps in milliseconds
     cutoff = int((time.time() - stale_after) * 1000)
-    async with async_session() as session:
+    # One transaction for both: the count would otherwise autobegin one, and
+    # a later session.begin() raises "A transaction is already begun".
+    async with async_session() as session, session.begin():
         stale_count = await session.scalar(
             select(func.count()).select_from(Message).where(Message.timestamp < cutoff)
         )
         if not stale_count or stale_count < MIN_CLEAN_COUNT:
             return 0
-        async with session.begin():
-            result = await session.execute(
-                delete(Message).where(Message.timestamp < cutoff)
-            )
+        result = await session.execute(
+            delete(Message).where(Message.timestamp < cutoff)
+        )
         return result.rowcount or 0
 
 
