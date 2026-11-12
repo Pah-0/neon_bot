@@ -867,7 +867,9 @@ async def try_snapsave(url: str) -> list:
                 )
                 break
             except httpx.HTTPError as e:
-                _log_.warning(f"snapsave: homepage fetch failed ({attempt + 1}/2): {e!r}")
+                _log_.warning(
+                    f"snapsave: homepage fetch failed ({attempt + 1}/2): {e!r}"
+                )
 
         cookie_str = "; ".join([f"{k}={v}" for k, v in client.cookies.items()])
 
