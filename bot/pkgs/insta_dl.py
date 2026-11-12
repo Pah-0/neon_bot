@@ -856,9 +856,18 @@ async def deobfuscate_with_deno(raw_js: str) -> str:
 
 async def try_snapsave(url: str) -> list:
     async with httpx.AsyncClient() as client:
-        await client.get(
-            "https://snapsave.app/", headers={"User-Agent": UA_BROWSER}, timeout=20.0
-        )
+        # Only here to pick up cookies, and the homepage currently sets none,
+        # so don't let a slow or failing homepage sink the actual request.
+        for attempt in range(2):
+            try:
+                await client.get(
+                    "https://snapsave.app/",
+                    headers={"User-Agent": UA_BROWSER},
+                    timeout=10.0,
+                )
+                break
+            except httpx.HTTPError as e:
+                _log_.warning(f"snapsave: homepage fetch failed ({attempt + 1}/2): {e!r}")
 
         cookie_str = "; ".join([f"{k}={v}" for k, v in client.cookies.items()])
 
