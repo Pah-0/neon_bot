@@ -1051,7 +1051,12 @@ async def get_fps(video_path: str) -> Fraction:
     if rc != 0:
         raise RuntimeError(stderr.decode().strip())
 
-    return Fraction(stdout.decode().strip())
+    # ffprobe reports "0/0" for streams without a frame rate (e.g. a static
+    # webp sticker); treat that as 0 rather than dividing by zero.
+    rate = stdout.decode().strip()
+    if rate.partition("/")[2] == "0":
+        return Fraction(0)
+    return Fraction(rate)
 
 
 async def get_mediainfo(video_path: str, full=False, html=False) -> str:
