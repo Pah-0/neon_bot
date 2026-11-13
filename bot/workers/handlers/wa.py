@@ -59,6 +59,17 @@ from bot.utils.bot_utils import (
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import log, logger
+from bot.utils.media_marks import (
+    COMPRESSED,
+    SANITIZED,
+    UPSCALED,
+    image_mark,
+    mark_processed,
+    processed_kind,
+    tag_image,
+    video_mark,
+    video_tag_args,
+)
 from bot.utils.modal_utils import UPSCALE_MODELS, unknown_model_msg, upscale_batch
 from bot.utils.msg_store import (
     get_deleted_message_ids,
@@ -240,6 +251,8 @@ async def sanitize_video(event: Event, args: str, client):
             f_name, ext = split_ext(replied.document.fileName)
         elif not replied.video:
             return await event.reply("*Replied message is not a video.*")
+        if processed_kind(replied.media) == SANITIZED:
+            return await event.reply("*This video was already sanitized.*")
         comp_sha = replied.media.fileSHA256
         async with cache_locks(("sanitize", comp_sha)) as lock:
             if media := sanitized_video_cache.get(comp_sha):
@@ -258,6 +271,7 @@ async def sanitize_video(event: Event, args: str, client):
                         else:
                             e = await event.reply_video(file, file_name)
                     sanitized_video_cache[comp_sha] = e.media
+                    await mark_processed(SANITIZED, e.media)
                     return
                 except Exception:
                     await logger(Exception)
@@ -268,9 +282,14 @@ async def sanitize_video(event: Event, args: str, client):
             _id = f"{event.chat.id}:{event.id}"
             in_ = f"temp/{_id}{ext}"
             out_ = f"temp/{_id}-1.mp4"
-            cmd_str = f"ffmpeg -fflags +genpts+igndts -err_detect ignore_err -max_error_rate 1.0 -i {in_} -map 0:v -map 0:a? -c:v libx264 -c:a copy -movflags +faststart {out_} -y"
+            cmd_str = f"ffmpeg -fflags +genpts+igndts -err_detect ignore_err -max_error_rate 1.0 -i {in_} -map 0:v -map 0:a? -c:v libx264 -c:a copy {
+                video_tag_args(SANITIZED)} -movflags +faststart {out_} -y"
 
             await write_binary(in_, file)
+            if await video_mark(in_) == SANITIZED:
+                s_remove(in_)
+                await mark_processed(SANITIZED, replied.media)
+                return await event.reply("*This video was already sanitized.*")
 
             async with event.react("⏲️"), comp_sem:
                 process, _stdout, stderr = await enshell(cmd_str)
@@ -292,6 +311,7 @@ async def sanitize_video(event: Event, args: str, client):
                 else:
                     e = await event.reply_video(out_, f_name)
                 sanitized_video_cache[comp_sha] = e.media
+                await mark_processed(SANITIZED, e.media)
             s_remove(out_)
     except Exception:
         await logger(Exception)
@@ -525,6 +545,8 @@ async def compress(event, args, client):
             f_name, ext = split_ext(replied.document.fileName)
         elif not replied.video:
             return await event.reply("*Replied message is not a video.*")
+        if processed_kind(replied.media) == COMPRESSED:
+            return await event.reply("*This video was already compressed.*")
         hevc = False
         if args and "--hevc" in args:
             args = args.replace("--hevc", "").strip()
@@ -552,6 +574,7 @@ async def compress(event, args, client):
                         file_name += ".mkv"
                         e = await event.reply_document(file, file_name, file_name)
                     compress_cache[comp_sha] = e.media
+                    await mark_processed(COMPRESSED, e.media)
                     return
                 except Exception:
                     await logger(Exception)
@@ -584,6 +607,7 @@ async def compress(event, args, client):
             cmd_str = f'''ffmpeg -i "{in_}" \
             -map 0:v? -map 0:a? -map 0:s? -map 0:t? \
             -metadata title="{title_} | MiNi" \
+            {video_tag_args(COMPRESSED)} \
             -c:v {video_codec} \
             {video_params} \
             -vf "scale='if(gt(iw,ih),-2,{height})':'if(gt(iw,ih),{height},-2)'" \
@@ -592,6 +616,10 @@ async def compress(event, args, client):
             -c:s copy \
             "{out_}"'''
             await write_binary(in_, file)
+            if await video_mark(in_) == COMPRESSED:
+                s_remove(in_)
+                await mark_processed(COMPRESSED, replied.media)
+                return await event.reply("*This video was already compressed.*")
 
             async with event.react("⏲️"), comp_sem:
                 process, _stdout, stderr = await enshell(cmd_str)
@@ -606,6 +634,7 @@ async def compress(event, args, client):
                 file_name += ".mkv"
                 e = await event.reply_document(out_, file_name, file_name)
                 compress_cache[comp_sha] = e.media
+                await mark_processed(COMPRESSED, e.media)
             s_remove(out_)
     except Exception:
         await logger(Exception)
@@ -1204,6 +1233,12 @@ async def upscale_image(event: Event, args: str, client):
             return await event.reply(
                 "*Command can only be used when replying to an image.*"
             )
+        if processed_kind(replied.media) == UPSCALED or (
+            replied.caption or ""
+        ).startswith("Upscaled image:"):
+            return await event.reply(
+                "What?, initial upscale not good enough for you? 😒"
+            )
         if replied.media.fileLength > 17939583:
             return await sticker_reply(event, args, client, True)
         # Upscaling takes minutes of GPU (or CPU) time; resending is cheap
@@ -1230,17 +1265,19 @@ async def upscale_image(event: Event, args: str, client):
                 upscale_cache.pop(cache_key, None)
                 return False
             upscale_cache[cache_key] = (msg.media, raw_is_doc, jpeg_msg.media)
+            await mark_processed(UPSCALED, msg.media, jpeg_msg.media)
             return True
 
         if await _send_cached():
             return
-        turn().add(turn_id)
-        status_msg = await event.reply("*…*")
-        if replied.caption and replied.caption.startswith("Upscaled image:"):
+        file = await replied.download()
+        if image_mark(file) == UPSCALED:
+            await mark_processed(UPSCALED, replied.media)
             return await event.reply(
                 "What?, initial upscale not good enough for you? 😒"
             )
-        file = await replied.download()
+        turn().add(turn_id)
+        status_msg = await event.reply("*…*")
 
         if waiting_for_turn():
             await event.react("⏰")
@@ -1293,6 +1330,7 @@ async def upscale_image(event: Event, args: str, client):
                 backend = "local"
         else:
             raw = await local_upscale(file)
+        raw = tag_image(raw, UPSCALED)
         sz = len(raw)
         raw_is_doc = sz > 100000000
         if sz > 2 << 30:
@@ -1301,8 +1339,9 @@ async def upscale_image(event: Event, args: str, client):
             msg = await event.reply_document(raw, "upscaled.png", "Upscaled image: Raw")
         else:
             msg = await event.reply_photo(raw, "Upscaled image: Raw")
-        raw = await upscaled_png_to_jpg(raw)
+        raw = tag_image(await upscaled_png_to_jpg(raw), UPSCALED)
         jpeg_msg = await msg.reply_photo(raw, "Upscaled image: Jpeg")
+        await mark_processed(UPSCALED, msg.media, jpeg_msg.media)
         if sz <= 2 << 30:
             # Keyed by what actually made it: Modal can fall back to local
             key = (cache_key[0], cache_key[1], backend)
@@ -1316,8 +1355,8 @@ async def upscale_image(event: Event, args: str, client):
     finally:
         if cancel_handler_key:
             bot.unregister(cancel_handler_key)
-        if turn(turn_id):
-            turn().advance()
+        # Only this request's turn: it may not be the one at the front
+        if turn().remove(turn_id):
             if status_msg:
                 await status_msg.delete()
 
@@ -1371,21 +1410,32 @@ async def upscale_album(event: Event, args: str, client):
             messages = await get_messages_by_album_id(event.chat.id, replied.id)
         if not messages:
             return await event.reply("*Replied album media(s) could not be retrieved.*")
-        first = messages[0]
-        if (
-            first.image
-            and first.caption
-            and first.caption.startswith("Upscaled image:")
-        ):
+        images = [m for m in messages if m.image]
+        medias = [
+            m
+            for m in images
+            if processed_kind(m.image) != UPSCALED
+            and not (m.caption or "").startswith("Upscaled image")
+        ]
+        if images and not medias:
             return await event.reply(
                 "What?, initial upscale not good enough for you? 😒"
             )
-        medias = [m for m in messages if m.image and m.image.fileLength < 17939583]
+        medias = [m for m in medias if m.image.fileLength < 17939583]
         if not medias:
             return await event.reply("*Replied album had no upscale-able images.*")
         funcs = [media.download() for media in medias]
         async with event.react("📥"):
             files = await asyncio.gather(*funcs)
+        if upscaled_before := [
+            m.image for m, f in zip(medias, files) if image_mark(f) == UPSCALED
+        ]:
+            await mark_processed(UPSCALED, *upscaled_before)
+            files = [f for f in files if image_mark(f) != UPSCALED]
+            if not files:
+                return await event.reply(
+                    "What?, initial upscale not good enough for you? 😒"
+                )
         upscaled: [bytes] = []
         async with event.react("👩🏻‍🏭"):
             for i in range(0, len(files), 2):
@@ -1395,10 +1445,15 @@ async def upscale_album(event: Event, args: str, client):
                 except Exception:
                     await logger()
                     continue
-                upscaled.extend(raws)
+                upscaled.extend(tag_image(raw, UPSCALED) for raw in raws)
             if not upscaled:
                 return await event.reply("Upscaling failed")
-            jpegs = [await upscaled_png_to_jpg(raw) for raw in upscaled]
+            jpegs = [
+                tag_image(await upscaled_png_to_jpg(raw), UPSCALED) for raw in upscaled
+            ]
+            # Album replies only give back the first message, so the outputs
+            # are recorded by the hashes of the bytes sent
+            await mark_processed(UPSCALED, *upscaled, *jpegs)
             large_images = move_oversized_in_place(upscaled)
         async with event.react("📤"):
             u = await event.reply_album(upscaled, "Upscaled images: Raw")

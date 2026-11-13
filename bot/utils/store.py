@@ -38,6 +38,7 @@ def stores() -> dict:
         "gift": (bot.gift_dict, 1),
         "note": (bot.notes_dict, 2),
         "filter": (bot.filters_dict, 2),
+        "processed": (bot.processed_dict, 1),
     }
 
 

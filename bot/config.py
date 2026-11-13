@@ -105,6 +105,9 @@ class Runtime_Config:
         self.flush_event = asyncio.Event()
         self.flush_waiters: list[asyncio.Future] = []
         self.pg_tools_are_installed = False
+        # SHA256 of media the bot compressed, sanitized or upscaled -> [kind,
+        # time]
+        self.processed_dict = {}
         self.notes_dict = {}
         self.remind_dict = {}
         self.rss_dict = {}
