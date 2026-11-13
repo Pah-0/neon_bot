@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from pathlib import Path
 
 from clean_links.clean import clean_url
@@ -8,7 +9,12 @@ from urlextract import URLExtract
 from bot.config import bot
 from bot.pkgs.insta_dl import is_valid_instagram_url
 from bot.pkgs.pinterest_dl import is_valid_pinterest_url
-from bot.pkgs.spotify_dl import is_valid_spotify_url
+from bot.pkgs.spotify_dl import (
+    get_spotify_collection,
+    is_spotify_collection,
+    is_valid_spotify_url,
+    resolve_spotify_short_url,
+)
 from bot.pkgs.tiktok_dl import is_valid_tiktok_url, resolve_short_url
 from bot.pkgs.twitter_dl import is_valid_twitter_url
 from bot.utils.bot_utils import image_to_png, read_binary, sync_to_async
@@ -30,6 +36,12 @@ from bot.utils.ytdl_utils import (
     is_valid_trim_args,
     spotify_to_ytmusic,
 )
+
+# Items sent per Spotify playlist or album, or yt-dlp playlist, link; each is a
+# download. "#all" in the message lifts it (Spotify's embed page lists at most
+# 100 tracks).
+MAX_PLAYLIST_ITEMS = 25
+ALL_TRACKS_RE = re.compile(r"(?<!\S)#all(?!\S)", re.IGNORECASE)
 
 
 async def folder_upload(
@@ -101,12 +113,18 @@ async def youtube_reply(event: Event, args: str, client):
     supported by yt-dlp (generic pages only for facebook.com), plus Instagram,
     Pinterest, TikTok and Twitter/X, which use dedicated downloaders first and
     fall back to yt-dlp. YouTube Music links are sent as mp3, YouTube posts as
-    images, playlists as a folder upload. Files over 100MB are sent as documents.
-    Spotify track links are looked up on YouTube Music and sent as mp3.
+    images, playlists (their first 25 entries; #all for all) as a folder upload.
+    Files over 100MB are sent as documents.
+    Spotify track links are looked up on YouTube Music and sent as mp3;
+    playlist and album links send their first 25 tracks that way (#all for up
+    to 100).
 
     Message options:
         #no_ytdl - Skip this message
         #yt-dlp-only - Only use yt-dlp (no dedicated downloaders)
+        #all - Send every entry of a playlist, or track of a Spotify
+               playlist or album, not just the first 25
+               (Spotify lists at most 100)
         (1080p), (480p), (360p), (270p), (240p), (144p) - Video quality (default 720p)
         [start-end] - At the start of the message, trim the video,
                       e.g. [00:30-01:15] or [30-75]
@@ -127,6 +145,7 @@ async def youtube_reply(event: Event, args: str, client):
         text = args or event.text
         urls = extractor.find_urls(text)
         only_use_ytdl = "#yt-dlp-only" in event.text
+        max_items = None if ALL_TRACKS_RE.search(event.text) else MAX_PLAYLIST_ITEMS
         if not urls:
             return
         supported_links = []
@@ -191,6 +210,35 @@ async def youtube_reply(event: Event, args: str, client):
             ytdl = None
             try:
                 if is_valid_spotify_url(job[0]):
+                    job[0] = await resolve_spotify_short_url(job[0])
+                    if is_spotify_collection(job[0]):
+                        collection = await get_spotify_collection(job[0])
+                        tracks = collection.tracks[:max_items]
+                        if not tracks:
+                            await event.reply(
+                                f"*No tracks found in Spotify {collection.kind}.*"
+                            )
+                            job.pop(0)
+                            continue
+                        note = f"*Spotify {collection.kind}: {collection.name}*\n"
+                        # The embed page lists at most 100 tracks
+                        total = len(collection.tracks)
+                        more = "+" if total >= 100 else ""
+                        if total > len(tracks):
+                            note += (
+                                f"Sending the first {len(tracks)} of {total}{more}"
+                                " tracks. Add #all to the message for all of them."
+                            )
+                        else:
+                            note += f"Sending {len(tracks)} track(s)."
+                            if more:
+                                note += " Spotify only lists the first 100."
+                        await event.reply(note)
+                        # A trim range is for one video, not every track
+                        t_args = None
+                        # Each track then goes through the track path below
+                        job[0:1] = tracks
+                        continue
                     job[0] = await spotify_to_ytmusic(job[0])
                 alt_listener = listener = MediaListener(job[0])
                 tryAlt = False
@@ -221,6 +269,10 @@ async def youtube_reply(event: Event, args: str, client):
                 _img_format = "best"
                 listener = DummyListener(job[0])
                 ytdl = YoutubeDLHelper(listener)
+                if max_items:
+                    # One more than is sent, to tell whether a playlist has more;
+                    # also spares extracting the rest of a long playlist
+                    ytdl.opts["playlistend"] = max_items + 1
                 quality = ""
                 if "music" in listener.link:
                     audio = True
@@ -262,6 +314,14 @@ async def youtube_reply(event: Event, args: str, client):
                 if result.get("is_live") or result.get("live_status") == "live":
                     return await event.reply("*It's a Live video XD*")
                 playlist = "entries" in result
+                if max_items:
+                    ytdl.opts["playlistend"] = max_items
+                    if playlist and len(list(result["entries"])) > max_items:
+                        await event.reply(
+                            f"*Playlist: {result.get('title') or 'Untitled'}*\n"
+                            f"Sending the first {max_items} entries. Add #all to"
+                            " the message for all of them."
+                        )
                 if not (trimmed or playlist) and t_args:
                     trimmed = True
                     if not is_valid_trim_args(t_args, total_dur=result.get("duration")):
