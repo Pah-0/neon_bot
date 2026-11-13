@@ -65,6 +65,7 @@ def fresh_bot():
         notes_dict={},
         filters_dict={},
         gift_dict={"codes": [], "chats": []},
+        processed_dict={},
     )
 
 
@@ -159,6 +160,7 @@ def stores_of(botobj):
         "gift": botobj.gift_dict,
         "note": botobj.notes_dict,
         "filter": botobj.filters_dict,
+        "processed": botobj.processed_dict,
     }
 
 
