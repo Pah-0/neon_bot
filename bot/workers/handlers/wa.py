@@ -165,6 +165,7 @@ async def tools(event, args, client):
             f"*Greetings:*{s}"
             f"{pre}greetings - *[Owner | Sudo | Admin] Enable/Disable greetings in group chats*{s}"
             f"{pre}setwelcome - *[Admins Only] Set a custom welcome message*{s}"
+            f"{pre}getwelcome - *[Admins Only] Get the custom welcome message as it was set*{s}"
             f"{pre}unsetwelcome - *[Admins Only] Unset the custom welcome message*{s}"
             f"{s}"
             f"*Rules:*{s}"
@@ -2943,6 +2944,37 @@ async def set_welcome(event, args, client):
         await logger(Exception)
 
 
+async def get_welcome(event, args, client):
+    """
+    [Admins Only] Get the group welcome message as it was set, unformatted. Group only.
+    """
+    user = event.from_user.id
+    if not event.chat.is_group:
+        return
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        group_info = await bot.client.get_group_info(event.chat.jid)
+        admin_user = user_is_admin(user, group_info.Participants)
+        if not admin_user:
+            return await event.reply("*Command can only be used by an admin.*")
+        gc = bot.group_dict.get(event.chat.id, {})
+        if not (msg := gc.get("welcome_msg")) or not isinstance(msg, str):
+            return await event.reply("*No welcome message was set.*")
+        if msg == "notes":
+            return await get_notes(event, "welcome", client)
+        elif msg == "topic":
+            return await event.reply(
+                "*The group description is used as the welcome message.*"
+            )
+        return await event.reply(msg)
+    except Exception:
+        await logger(Exception)
+
+
 async def unset_welcome(event, args, client):
     """
     [Admins Only] Unset the group welcome message. Group only.
@@ -3299,6 +3331,7 @@ bot.add_handler(sanitize_video, "sanitize_video")
 
 
 bot.add_handler(set_welcome, "setwelcome")
+bot.add_handler(get_welcome, "getwelcome")
 bot.add_handler(unset_welcome, "unsetwelcome")
 
 
