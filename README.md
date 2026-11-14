@@ -90,7 +90,7 @@ The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds`, `.t
 
 ### Group Management
 - `.greetings [on/off]`: Enable or disable welcome/goodbye messages.
-- `.setwelcome` / `.unsetwelcome`: Set or remove a custom welcome message.
+- `.setwelcome` / `.getwelcome` / `.unsetwelcome`: Set, view (raw, before formatting), or remove a custom welcome message.
 - `.setrules` / `.delrules` / `.rules`: Set, delete, or view group rules.
 - `.roles [-l | role_name]`: List role commands, list roles, or show a role.
 - `.new_role` / `.edit_role` / `.del_role`: Create, edit, or delete a role. Roles can have a description (`-d`) and be closed (`-c`), so members are added by the creator or an admin instead of joining.
