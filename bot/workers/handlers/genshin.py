@@ -15,13 +15,20 @@ async def manage_autogift_chat(event, args):
         action, _, chat = args.strip().partition(" ")
         chat = chat.strip()
         chats = bot.gift_dict["chats"]
+        pinned = bot.gift_dict["pin"]
         if action == "-get":
             if not chats:
                 return await event.reply("*No chat set!*")
             return await event.reply(
-                list_to_str([c or "default" for c in chats], sep=", ")
+                list_to_str(
+                    [
+                        (c or "default") + (" (pinned)" if c in pinned else "")
+                        for c in chats
+                    ],
+                    sep=", ",
+                )
             )
-        if action not in ("-add", "-rm") or not chat:
+        if action not in ("-add", "-rm", "-pin", "-unpin") or not chat:
             return await event.reply(getdoc(gift_codes))
         if chat == ".":
             chat = f"{event.chat.id}:{event.chat.server}"
@@ -31,12 +38,25 @@ async def manage_autogift_chat(event, args):
             if chat in chats:
                 return await event.reply("*Chat already added!*")
             chats.append(chat)
-        else:
-            if chat not in chats:
-                return await event.reply("*Given chat was never added!*")
+            done = "added"
+        elif chat not in chats:
+            return await event.reply("*Given chat was never added!*")
+        elif action == "-rm":
             chats.remove(chat)
+            if chat in pinned:
+                pinned.remove(chat)
+            done = "removed"
+        elif action == "-pin":
+            if chat in pinned:
+                return await event.reply("*Already pinning in this chat!*")
+            pinned.append(chat)
+            done = "set to pin new codes for a day (if I'm an admin there)"
+        else:
+            if chat not in pinned:
+                return await event.reply("*Wasn't pinning in this chat!*")
+            pinned.remove(chat)
+            done = "set to stop pinning new codes"
         await save2db2(bot.gift_dict, "gift")
-        done = "added" if action == "-add" else "removed"
         await event.reply(f"*{chat or 'default'}* has been {done}.")
     except Exception:
         await logger(Exception)
@@ -52,6 +72,9 @@ async def gift_codes(event, args, client):
         -add <chat> : [Owner | Sudo] post new codes to a chat automatically
         -rm <chat> : [Owner | Sudo] stop posting new codes to a chat
         -get : [Owner | Sudo] list the chats new codes are posted to
+        -pin <chat> : [Owner | Sudo] pin new codes posted to an added chat
+            for a day; needs the bot to be an admin there
+        -unpin <chat> : [Owner | Sudo] stop pinning them
     chat: . for this chat, default for RSS_CHAT, or chat_id:server
     New codes are checked for every 30 minutes.
     """

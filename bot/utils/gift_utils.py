@@ -116,15 +116,13 @@ async def gift_code_monitor():
         msg = get_msg_from_codes(new_codes, auto=True)
         expanded_chat = []
         for chat in bot.gift_dict["chats"]:
-            (
-                expanded_chat.append(chat)
-                if chat
-                else expanded_chat.extend(conf.RSS_CHAT.split())
-            )
-        for chat in expanded_chat:
+            pin = chat in bot.gift_dict["pin"]
+            for c in [chat] if chat else conf.RSS_CHAT.split():
+                expanded_chat.append((c, pin))
+        for chat, pin in expanded_chat:
             chat, _, server = chat.partition(":")
             try:
-                await send_rss(msg, chat, [], server or "s.whatsapp.net")
+                await send_rss(msg, chat, [], server or "s.whatsapp.net", pin)
                 await asyncio.sleep(5)
             except Exception:
                 log(Exception)
