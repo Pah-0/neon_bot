@@ -2967,7 +2967,9 @@ async def get_welcome(event, args, client):
         if msg == "notes":
             return await get_notes(event, "welcome", client)
         elif msg == "topic":
-            return await event.reply("*The group description is used as the welcome message.*")
+            return await event.reply(
+                "*The group description is used as the welcome message.*"
+            )
         return await event.reply(msg)
     except Exception:
         await logger(Exception)
