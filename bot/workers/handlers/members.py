@@ -6,12 +6,7 @@ from bot import bot, jid
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import (
-    get_args,
-    get_mentioned,
-    user_is_admin,
-    user_is_privileged,
-)
+from bot.utils.msg_utils import get_mentioned, user_is_admin, user_is_privileged
 
 # Error codes WhatsApp gives per participant when adding one fails
 ADD_ERRORS = {
@@ -277,9 +272,8 @@ async def add(event: Event, args, client):
                 if not participant.Error:
                     notes.append(f"*Added {number}.*")
                     continue
-                why = ADD_ERRORS.get(
-                    participant.Error, f"couldn't be added (error {participant.Error})"
-                )
+                why = ADD_ERRORS.get(participant.Error, f"couldn't be added (error {
+                        participant.Error})")
                 if participant.Error == 403:
                     link = link or await client.get_group_invite_link(event.chat.jid)
                     await client.send_message(
