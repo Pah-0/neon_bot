@@ -952,7 +952,8 @@ def _draw_profile(spec: dict, art: dict) -> bytes:
 
     banner = art.get("banner")
     if banner is not None:
-        # Fill the header; very wide namecards (ZZZ's) are cropped to the middle
+        # Fill the header; very wide namecards (ZZZ's) are cropped to the
+        # middle
         scale = max(PW / banner.width, 420 / banner.height)
         banner = banner.resize(
             (int(banner.width * scale), int(banner.height * scale)),
@@ -1054,7 +1055,8 @@ def _gi_profile(player, characters, uid_text) -> tuple[dict, dict]:
             {
                 "title": "Stygian Onslaught",
                 "value": STYGIAN_DIFFICULTIES.get(difficulty, "Dire"),
-                "extra": f"Cleared in {clear_time(seconds)}" if seconds else None,
+                "extra": f"Cleared in {
+                    clear_time(seconds)}" if seconds else None,
                 "icon": "medal",
             }
         )
@@ -1075,7 +1077,9 @@ def _gi_profile(player, characters, uid_text) -> tuple[dict, dict]:
         )
     spec = {
         "name": player.nickname,
-        "line": f"AR {player.level}  ·  WL {player.world_level}  ·  {uid_text}",
+        "line": f"AR {
+            player.level}  ·  WL {
+            player.world_level}  ·  {uid_text}",
         "signature": player.signature,
         "tiles": tiles,
         "characters": chars,
@@ -1105,7 +1109,9 @@ def _hsr_profile(player, characters, uid_text) -> tuple[dict, dict]:
         chars.append(
             {
                 "name": character.name,
-                "line": f"Lv. {character.level} · E{character.eidolons_unlocked}",
+                "line": f"Lv. {
+                    character.level} · E{
+                    character.eidolons_unlocked}",
                 "colour": ELEMENT_COLOURS.get(
                     _element(character.element), DEFAULT_COLOUR
                 ),
@@ -1115,7 +1121,9 @@ def _hsr_profile(player, characters, uid_text) -> tuple[dict, dict]:
     spec = {
         "banner_colour": first,
         "name": player.nickname,
-        "line": f"TL {player.level}  ·  EQ {player.equilibrium_level}  ·  {uid_text}",
+        "line": f"TL {
+            player.level}  ·  EQ {
+            player.equilibrium_level}  ·  {uid_text}",
         "signature": player.signature,
         "tiles": tiles,
         "characters": chars,

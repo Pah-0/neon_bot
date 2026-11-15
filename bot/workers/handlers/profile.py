@@ -187,7 +187,10 @@ async def game_profile(event, args, game: str):
             return await event.reply_photo(await build_card(game, character, owner))
 
         await status.edit("*Drawing the profile card…*")
-        caption = f"*{player.nickname}* · {info['level']} {player.level} · {uid_text}"
+        caption = f"*{
+            player.nickname}* · {
+            info['level']} {
+            player.level} · {uid_text}"
         caption += (
             "\nPick a character from the poll for their build card."
             if characters
