@@ -17,27 +17,53 @@ from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_resp
 
 # A WhatsApp poll takes at most 12 options, as many as a showcase holds
 MAX_CHOICES = 12
+GAMES = {
+    "gi": {
+        "name": "Genshin",
+        "client": lambda: enka.GenshinClient(enka.gi.Language.ENGLISH),
+        "uid_lengths": (9, 10),
+        "level": "AR",
+        "cons": "C",
+    },
+    "hsr": {
+        "name": "Star Rail",
+        "client": lambda: enka.HSRClient(enka.hsr.Language.ENGLISH),
+        "uid_lengths": (9, 10),
+        "level": "TL",
+        "cons": "E",
+    },
+    "zzz": {
+        "name": "ZZZ",
+        "client": lambda: enka.ZZZClient(enka.zzz.Language.ENGLISH),
+        "uid_lengths": (8, 9, 10),
+        "level": "Inter-Knot Lv.",
+        "cons": "M",
+    },
+}
 ERRORS = {
-    enka.errors.WrongUIDFormatError: "*That isn't a valid Genshin UID.*",
+    enka.errors.WrongUIDFormatError: "*That isn't a valid {name} UID.*",
     enka.errors.ProfileUnavailableError: "*That player's profile is private.*",
-    enka.errors.PlayerDoesNotExistError: "*No player has that UID.*",
-    enka.errors.GameMaintenanceError: "*Genshin is under maintenance; try again later.*",
+    enka.errors.PlayerDoesNotExistError: "*No {name} player has that UID.*",
+    enka.errors.GameMaintenanceError: "*{name} is under maintenance; try again later.*",
     enka.errors.RateLimitedError: "*Enka.Network is busy; try again in a minute.*",
 }
 
-_client = None
+_clients = {}
 _client_lock = asyncio.Lock()
 
 
-async def get_client() -> enka.GenshinClient:
-    """One Enka client for the bot, so game assets download only once"""
-    global _client
+async def get_client(game: str):
+    """One Enka client per game, so its assets download only once"""
     async with _client_lock:
-        if _client is None:
-            client = enka.GenshinClient(enka.gi.Language.ENGLISH)
+        if game not in _clients:
+            client = GAMES[game]["client"]()
             await client.start()
-            _client = client
-        return _client
+            _clients[game] = client
+        return _clients[game]
+
+
+def showcase_of(game: str, showcase) -> list:
+    return showcase.agents if game == "zzz" else showcase.characters
 
 
 def find_character(characters: list, choice: str):
@@ -79,35 +105,36 @@ async def pick_character(event, characters: list):
     return characters[choice[0]] if choice else None
 
 
-async def save_uid(event, uid: str):
+async def save_uid(event, game: str, uid: str):
     user = bot.user_dict.setdefault(event.from_user.hid, {})
+    name = GAMES[game]["name"]
     if uid:
-        user["gi_uid"] = uid
-        msg = (
-            f"*Saved your Genshin UID:* {uid}\nNow just send {conf.CMD_PREFIX}profile."
-        )
+        user[f"{game}_uid"] = uid
+        msg = f"*Saved your {name} UID:* {uid}\nNow just send {conf.CMD_PREFIX}{game}."
     else:
-        user.pop("gi_uid", None)
-        msg = "*Your saved Genshin UID has been removed.*"
+        user.pop(f"{game}_uid", None)
+        msg = f"*Your saved {name} UID has been removed.*"
     await save2db2(bot.user_dict, "users")
     await event.reply(msg)
 
 
-async def profile(event, args, client):
+async def game_profile(event, args, game: str):
     """
-    Shows a Genshin Impact player's profile from Enka.Network: Adventure Rank,
-    Spiral Abyss, Imaginarium Theater and Stygian Onslaught progress, and the
-    characters in their in-game showcase. Pick one from the poll for its build
-    card.
+    Shows a {game_name} player's profile from Enka.Network and the characters
+    in their in-game showcase. Pick one from the poll for its build card.
 
-    Usage: {pre}profile [uid] [character] [-h]
-        uid: a Genshin UID; leave it out to use the one you saved
+    Usage: {pre}{game} [uid] [character] [-h]
+        uid: a {game_name} UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
         -h : hide the UID on the cards
         -set <uid> : save your UID
         -unset : forget your saved UID
-    Characters only show if "Show Character Details" is on in-game.
+    Characters only show if their details are public in-game.
     """
+    info = GAMES[game]
+    help_text = getdoc(game_profile).format(
+        pre=conf.CMD_PREFIX, game=game, game_name=info["name"]
+    )
     user = event.from_user.id
     if not user_is_privileged(user):
         if not chat_is_allowed(event):
@@ -116,37 +143,37 @@ async def profile(event, args, client):
             return await event.react("⛔")
     words = args.split()
     if words and words[0].casefold() in ("-set", "-unset"):
-        uid = words[1] if len(words) > 1 and words[0].casefold() == "-set" else ""
-        if words[0].casefold() == "-set" and not (
-            uid.isdigit() and 9 <= len(uid) <= 10
-        ):
-            return await event.reply("*Give a 9 or 10 digit Genshin UID to save.*")
-        return await save_uid(event, uid)
+        setting = words[0].casefold() == "-set"
+        uid = words[1] if setting and len(words) > 1 else ""
+        if setting and not (uid.isdigit() and len(uid) in info["uid_lengths"]):
+            return await event.reply(f"*Give a {info['name']} UID to save.*")
+        return await save_uid(event, game, uid)
     hide = "-h" in (w.casefold() for w in words)
     words = [w for w in words if w.casefold() != "-h"]
-    if words and words[0].isdigit() and len(words[0]) >= 9:
+    if words and words[0].isdigit() and len(words[0]) in info["uid_lengths"]:
         uid, words = words[0], words[1:]
     else:
-        uid = bot.user_dict.get(event.from_user.hid, {}).get("gi_uid")
+        uid = bot.user_dict.get(event.from_user.hid, {}).get(f"{game}_uid")
     if not uid:
-        return await event.reply(getdoc(profile).format(pre=conf.CMD_PREFIX))
+        return await event.reply(help_text)
     choice = " ".join(words)
     status = None
     try:
+        shown = uid if not hide else "that UID"
         status = await event.reply(
-            f"*Fetching the profile for {uid if not hide else 'that UID'}…*"
+            f"*Fetching the {info['name']} profile for {shown}…*"
         )
-        enka_client = await get_client()
+        client = await get_client(game)
         try:
-            showcase = await enka_client.fetch_showcase(uid)
+            showcase = await client.fetch_showcase(uid)
         except enka.errors.EnkaAPIError as e:
             for error, msg in ERRORS.items():
                 if isinstance(e, error):
-                    await status.edit(msg)
+                    await status.edit(msg.format(name=info["name"]))
                     status = None
                     return
             raise
-        player, characters = showcase.player, showcase.characters
+        player, characters = showcase.player, showcase_of(game, showcase)
         uid_text = "UID: [Hidden]" if hide else f"UID {uid}"
         owner = f"{player.nickname} · {uid_text}"
 
@@ -157,17 +184,17 @@ async def profile(event, args, client):
                 status = None
                 return
             await status.edit(f"*Drawing {character.name}'s card…*")
-            return await event.reply_photo(await build_card(character, owner))
+            return await event.reply_photo(await build_card(game, character, owner))
 
         await status.edit("*Drawing the profile card…*")
-        caption = f"*{player.nickname}* · AR {player.level} · {uid_text}"
-        if characters:
-            caption += "\nPick a character from the poll for their build card."
-        elif player.showcase_characters:
-            caption += "\n_Their character details are hidden in-game._"
-        await event.reply_photo(
-            await profile_card(player, characters, uid_text), caption
+        caption = f"*{player.nickname}* · {info['level']} {player.level} · {uid_text}"
+        caption += (
+            "\nPick a character from the poll for their build card."
+            if characters
+            else "\n_No characters are public in their showcase._"
         )
+        card = await profile_card(game, player, characters, uid_text)
+        await event.reply_photo(card, caption)
         await status.delete()
         status = None
         if not characters:
@@ -176,7 +203,7 @@ async def profile(event, args, client):
         if character is None:
             return
         status = await event.reply(f"*Drawing {character.name}'s card…*")
-        await event.reply_photo(await build_card(character, owner))
+        await event.reply_photo(await build_card(game, character, owner))
     except Exception as e:
         await logger(Exception)
         await event.react("❌")
@@ -186,3 +213,15 @@ async def profile(event, args, client):
     finally:
         if status:
             await status.delete()
+
+
+async def gi_profile(event, args, client):
+    await game_profile(event, args, "gi")
+
+
+async def hsr_profile(event, args, client):
+    await game_profile(event, args, "hsr")
+
+
+async def zzz_profile(event, args, client):
+    await game_profile(event, args, "zzz")

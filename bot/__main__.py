@@ -57,7 +57,7 @@ from .workers.handlers.manage import (
 )
 from .workers.handlers.media_dl import youtube_reply
 from .workers.handlers.objection import insession, render_objection
-from .workers.handlers.profile import profile
+from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
 from .workers.handlers.role import roles
 from .workers.handlers.stuff import gc_info, getcmds, hello, up
 from .workers.handlers.tldr import eli5, razor, tldr
@@ -235,9 +235,19 @@ async def _(client: NewAClient, message: Event):
     await event_handler(message, gift_codes, client)
 
 
-@bot.register("profile")
+@bot.register("gi")
 async def _(client: NewAClient, message: Event):
-    await event_handler(message, profile, client)
+    await event_handler(message, gi_profile, client)
+
+
+@bot.register("hsr")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, hsr_profile, client)
+
+
+@bot.register("zzz")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, zzz_profile, client)
 
 
 @bot.register("anime")
