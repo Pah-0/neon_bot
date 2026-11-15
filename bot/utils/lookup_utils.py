@@ -415,9 +415,9 @@ async def search_ao3(query: str) -> list[tuple[str, str]]:
             continue
         _ao3_works[work["id"]] = work
         results.append((work["id"], f"{
-                work['title']} by {
-                ', '.join(
-                    work['authors'])}"))
+            work['title']} by {
+            ', '.join(
+                work['authors'])}"))
     return results
 
 
