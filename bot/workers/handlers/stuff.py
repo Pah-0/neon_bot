@@ -33,6 +33,7 @@ async def getcmds(event, args, client):
 {pre}anime - *Fetch anime info from anilist*
 {pre}airing - *Fetch anime airing info from anilist*
 {pre}gicodes - *Get Genshin Impact redeem codes ([Owner | Sudo | Admin] -add/-rm/-get chats to auto-post new ones, -pin/-unpin to pin them for a day)*
+{pre}profile - *Genshin player profile and character build cards from Enka.Network (-set <uid> to save yours)*
 {pre}insession - *Start an Ace Attorney objection session*
 {pre}renderobj - *Render an objection session into a video*
 {pre}werewolf - *Play a game of Werewolf*

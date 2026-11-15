@@ -9,6 +9,7 @@ clean_links
 colorlog
 dateparser
 emoji-country-flag
+enka @ git+https://github.com/seriaati/enka-py@v2.8.0
 feedparser
 html_telegraph_poster
 humanize
