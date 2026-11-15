@@ -227,12 +227,15 @@ async def farm_monitor():
         if not due:
             return
         schedule = await get_schedule()
+        pinned = bot.gift_dict.get("farm_pin", [])
         for chat, region in due:
             msg = get_farm_msg(schedule, server_weekday(region), region, auto=True)
             for c in [chat] if chat else conf.RSS_CHAT.split():
                 c, _, server = c.partition(":")
                 try:
-                    await send_rss(msg, c, [], server or "s.whatsapp.net")
+                    await send_rss(
+                        msg, c, [], server or "s.whatsapp.net", chat in pinned
+                    )
                     await asyncio.sleep(5)
                 except Exception:
                     log(Exception)

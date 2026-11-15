@@ -33,7 +33,7 @@ async def getcmds(event, args, client):
 {pre}anime - *Fetch anime info from anilist*
 {pre}airing - *Fetch anime airing info from anilist*
 {pre}gicodes - *Get Genshin Impact redeem codes ([Owner | Sudo | Admin] -add/-rm/-get chats to auto-post new ones, -pin/-unpin to pin them for a day)*
-{pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily)*
+{pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily, -pin/-unpin to pin it for a day)*
 {pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*
 {pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
 {pre}insession - *Start an Ace Attorney objection session*
