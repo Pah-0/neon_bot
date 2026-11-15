@@ -1,0 +1,53 @@
+name: sticker pack
+
+# Mirrors the reply stickers into a release attachment the bot downloads,
+# so it doesn't fetch each one from its host (Fandom's CDN refuses the bot)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - bot/fun/stickers.py
+      - scripts/build_sticker_pack.py
+      - .github/workflows/stickers.yml
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # needed to publish the release attachment
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.12
+
+      - name: Install Pillow
+        run: pip install pillow
+
+      - name: Download the stickers
+        run: python scripts/build_sticker_pack.py stickers.zip | tee pack.log
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          head -1 pack.log >> "$GITHUB_STEP_SUMMARY"
+          grep '^left out' pack.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
+
+      # A release of its own, never marked latest, so the version releases
+      # stay on top
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view stickers > /dev/null 2>&1; then
+            gh release create stickers --title "Sticker pack" --latest=false \
+              --notes "Reply stickers mirrored by the sticker pack workflow; downloaded by the bot."
+          fi
+          gh release upload stickers stickers.zip --clobber

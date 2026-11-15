@@ -3,6 +3,8 @@ import hashlib
 import io
 import os
 import random
+import time
+import zipfile
 
 import aiohttp
 from PIL import Image
@@ -1151,6 +1153,43 @@ def ran_stick():
 # converter, which treats anything that isn't an image as a video
 STICKER_CACHE = os.path.join(".cache", "stickers")
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
+# The stickers mirrored by .github/workflows/stickers.yml, under the names
+# this cache uses; refreshed weekly
+STICKER_PACK = (
+    "https://github.com/Pah-0/neon_bot/releases/download/stickers/stickers.zip"
+)
+PACK_MARKER = os.path.join(STICKER_CACHE, ".pack")
+PACK_MAX_AGE = 7 * 24 * 3600
+_pack_lock = asyncio.Lock()
+
+
+async def ensure_pack():
+    """Unpacks the sticker pack into the cache if it's missing or a week old"""
+    async with _pack_lock:
+        try:
+            if time.time() - os.path.getmtime(PACK_MARKER) < PACK_MAX_AGE:
+                return
+        except OSError:
+            pass
+        try:
+            timeout = aiohttp.ClientTimeout(total=300)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(STICKER_PACK) as resp:
+                    if resp.status != 200:
+                        return
+                    data = await resp.read()
+            os.makedirs(STICKER_CACHE, exist_ok=True)
+            with zipfile.ZipFile(io.BytesIO(data)) as pack:
+                for name in pack.namelist():
+                    # Only the plain hash names the cache uses
+                    if os.path.basename(name) == name and len(name) == 40:
+                        with open(os.path.join(STICKER_CACHE, name), "wb") as f:
+                            f.write(pack.read(name))
+            with open(PACK_MARKER, "w") as f:
+                f.write(str(len(data)))
+        except Exception:
+            # Without the pack, stickers are fetched (and cached) one by one
+            return
 
 
 async def sticker_bytes(url: str) -> bytes | None:
@@ -1177,6 +1216,7 @@ async def sticker_bytes(url: str) -> bytes | None:
 
 async def random_sticker(tries: int = 5) -> bytes | None:
     """A random sticker's image, skipping ones that can't be fetched"""
+    await ensure_pack()
     for _ in range(tries):
         if data := await sticker_bytes(ran_stick()):
             return data
