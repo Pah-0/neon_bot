@@ -213,7 +213,10 @@ async def game_profile(event, args, game: str):
             return
 
         await status.edit("*Drawing the profile card…*")
-        caption = f"*{player.nickname}* · {info['level']} {player.level} · {uid_text}"
+        caption = f"*{
+            player.nickname}* · {
+            info['level']} {
+            player.level} · {uid_text}"
         caption += (
             "\nAdd -c to pick characters for build cards, or a number or name for one."
             if characters
