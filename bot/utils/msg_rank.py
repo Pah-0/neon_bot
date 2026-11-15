@@ -68,6 +68,8 @@ async def auto_rank():
             saved_config = {
                 "period": ranking.get("period", "weekly"),
                 "server": ranking.get("server"),
+                # Where the next period's final standings start their dates
+                "since": today.date().isoformat(),
             }
             update_users_rank(group)
             ranking.clear()
@@ -119,6 +121,8 @@ async def send_ranking(group, period, mentions_are_lids, final=False):
         tags = "  ".join(f"{r['place']}. @{r['user']}" for r in data["rows"])
         if final:
             data["final"] = "week ended" if period == "weekly" else "month ended"
+            since = bot.group_dict.get(group, {}).get("msg_ranking", {}).get("since")
+            data["period"] = period_dates(since, period, datetime.date.today())
             caption = f"{notice}\n{tags}"
         else:
             caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
@@ -134,6 +138,31 @@ async def send_ranking(group, period, mentions_are_lids, final=False):
             )
         if final:
             await bot.client.send_message(chat, notice)
+
+
+def period_dates(since: str | None, period: str, end: datetime.date) -> str:
+    """
+    The dates a ranking period covered, e.g. "9 – 15 Nov", "28 Oct – 3 Nov".
+    Rankings from before "since" was kept get the last week, or the month.
+    """
+    try:
+        start = datetime.date.fromisoformat(since)
+    except (TypeError, ValueError):
+        if period == "weekly":
+            start = end - datetime.timedelta(days=6)
+        else:
+            # Monthly resets come in the first days of the new month
+            first = end.replace(day=1)
+            start = (
+                (first - datetime.timedelta(days=1)).replace(day=1)
+                if end.day <= 7
+                else first
+            )
+    if start.year != end.year:
+        return f"{start:%-d %b %Y} – {end:%-d %b %Y}"
+    if start.month != end.month:
+        return f"{start:%-d %b} – {end:%-d %b}"
+    return f"{start:%-d} – {end:%-d %b}"
 
 
 def update_users_rank(chat_id):
