@@ -15,7 +15,8 @@ from bot.utils.msg_utils import (
 async def getcmds(event, args, client):
     """
     List the bot's main commands.
-    Tools, fun and role commands are listed by tools, fun and roles.
+    Tools, fun, role and management commands are listed by tools, fun, roles
+    and manage.
 
     Arguments: None
     """
@@ -43,7 +44,29 @@ async def getcmds(event, args, client):
 {pre}fun - *Get fun commands*
 {pre}tools - *Get tools commands*
 {pre}roles - *Get commands for roles*
-{pre}sudo - *[Owner] View/Modify sudoers*
+{pre}manage - *Get bot and group management commands*"""
+        await event.reply(msg)
+    except Exception as e:
+        await logger(Exception)
+        return await event.reply(f"*Error:*\n{e}")
+
+
+async def manage_cmds(event, args, client):
+    """
+    List the commands for managing the bot and groups: the ones for owners,
+    sudoers, group admins and devs.
+
+    Arguments: None
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        pre = conf.CMD_PREFIX
+        msg = f"""{pre}sudo - *[Owner] View/Modify sudoers*
 {pre}pause - *[Owner] Pauses/Unpauses bot*
 {pre}logs - *[Owner] Get bot logs*
 {pre}ban - *[Owner | Sudo] Prevent a user from using bot*
