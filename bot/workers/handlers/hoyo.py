@@ -1,7 +1,7 @@
 import asyncio
 from inspect import getdoc
 
-from bot.config import bot, conf
+from bot.config import bot
 from bot.utils.bot_utils import split_text
 from bot.utils.hoyo_utils import (
     GAMES,
@@ -57,7 +57,7 @@ async def hoyo_search(event, args, client):
     or Zenless Zone Zero. If a name matches several, a poll is sent to pick one.
     Data from Project Amber, Project Yatta and Hakushin.
 
-    Usage: {pre}search <name> [flags]
+    Usage: search <name> [flags]
     Flags:
         -gi, -hsr, -zzz : only search this game
         -char, -weapon, -set : only search characters, weapons (light cones,
@@ -85,7 +85,7 @@ async def hoyo_search(event, args, client):
             words.append(word)
     query = " ".join(words)
     if not query:
-        return await event.reply(getdoc(hoyo_search).format(pre=conf.CMD_PREFIX))
+        return await event.reply(getdoc(hoyo_search))
     status = None
     try:
         status = await event.reply(f"*Searching for {query}…*")

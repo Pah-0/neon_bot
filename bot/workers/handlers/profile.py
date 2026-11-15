@@ -119,22 +119,9 @@ async def save_uid(event, game: str, uid: str):
 
 
 async def game_profile(event, args, game: str):
-    """
-    Shows a {game_name} player's profile from Enka.Network and the characters
-    in their in-game showcase. Pick one from the poll for its build card.
-
-    Usage: {pre}{game} [uid] [character] [-h]
-        uid: a {game_name} UID; leave it out to use the one you saved
-        character: a showcase number or name, to go straight to its build card
-        -h : hide the UID on the cards
-        -set <uid> : save your UID
-        -unset : forget your saved UID
-    Characters only show if their details are public in-game.
-    """
+    """The .gi/.hsr/.zzz command for game; each wrapper below holds its help"""
     info = GAMES[game]
-    help_text = getdoc(game_profile).format(
-        pre=conf.CMD_PREFIX, game=game, game_name=info["name"]
-    )
+    help_text = getdoc(info["handler"])
     user = event.from_user.id
     if not user_is_privileged(user):
         if not chat_is_allowed(event):
@@ -148,8 +135,8 @@ async def game_profile(event, args, game: str):
         if setting and not (uid.isdigit() and len(uid) in info["uid_lengths"]):
             return await event.reply(f"*Give a {info['name']} UID to save.*")
         return await save_uid(event, game, uid)
-    hide = "-h" in (w.casefold() for w in words)
-    words = [w for w in words if w.casefold() != "-h"]
+    hide = any(w.casefold() in ("-hide", "-h") for w in words)
+    words = [w for w in words if w.casefold() not in ("-hide", "-h")]
     if words and words[0].isdigit() and len(words[0]) in info["uid_lengths"]:
         uid, words = words[0], words[1:]
     else:
@@ -221,12 +208,60 @@ async def game_profile(event, args, game: str):
 
 
 async def gi_profile(event, args, client):
+    """
+    Shows a Genshin Impact player's profile card from Enka.Network: Adventure
+    Rank, Spiral Abyss, Imaginarium Theater and Stygian Onslaught progress, and
+    the characters in their in-game showcase. Pick one from the poll for its
+    build card (stats, weapon, artifacts with crit value).
+
+    Usage: gi [uid] [character] [-hide]
+        uid: a Genshin UID; leave it out to use the one you saved
+        character: a showcase number or name, to go straight to its build card
+        -hide : hide the UID on the cards
+        -set <uid> : save your Genshin UID
+        -unset : forget your saved Genshin UID
+    Characters only show if "Show Character Details" is on in-game.
+    """
     await game_profile(event, args, "gi")
 
 
 async def hsr_profile(event, args, client):
+    """
+    Shows a Honkai: Star Rail player's profile card from Enka.Network:
+    Trailblaze and Equilibrium levels, achievements and collection, and the
+    characters in their in-game showcase. Pick one from the poll for its build
+    card (stats, light cone, relics with crit value, traces, eidolons).
+
+    Usage: hsr [uid] [character] [-hide]
+        uid: a Star Rail UID; leave it out to use the one you saved
+        character: a showcase number or name, to go straight to its build card
+        -hide : hide the UID on the cards
+        -set <uid> : save your Star Rail UID
+        -unset : forget your saved Star Rail UID
+    Characters only show if they're in the in-game showcase.
+    """
     await game_profile(event, args, "hsr")
 
 
 async def zzz_profile(event, args, client):
+    """
+    Shows a Zenless Zone Zero player's profile card from Enka.Network:
+    Inter-Knot level, title, Shiyu Defense, Simulated Battle Tower and Deadly
+    Assault medals, and the agents in their in-game showcase. Pick one from the
+    poll for its build card (stats, W-Engine, drive discs with crit value,
+    skills, mindscapes).
+
+    Usage: zzz [uid] [agent] [-hide]
+        uid: a ZZZ UID; leave it out to use the one you saved
+        agent: a showcase number or name, to go straight to its build card
+        -hide : hide the UID on the cards
+        -set <uid> : save your ZZZ UID
+        -unset : forget your saved ZZZ UID
+    Agents only show if they're in the in-game showcase.
+    """
     await game_profile(event, args, "zzz")
+
+
+GAMES["gi"]["handler"] = gi_profile
+GAMES["hsr"]["handler"] = hsr_profile
+GAMES["zzz"]["handler"] = zzz_profile
