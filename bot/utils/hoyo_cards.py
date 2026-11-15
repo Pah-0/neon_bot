@@ -375,20 +375,120 @@ def _circle_item(card, draw, box, item, colour, art):
         draw.text((bx + 7, by + 1), badge, font=face, fill=WHITE if on else FAINT)
 
 
+def _pill(card, draw, x: float, y: float, text: str, fill, colour=WHITE) -> float:
+    """A rounded label; returns its right edge"""
+    face = font(22, True)
+    w = text_width(text, face) + 28
+    panel(card, (x, y, x + w, y + 38), radius=19, fill=fill)
+    draw.text((x + 14, y + 5), text, font=face, fill=colour)
+    return x + w
+
+
+RANK_X0, RANK_X1 = 130, 436
+
+
+def _draw_rank(card, draw, board: dict, art: dict, colour: tuple, y: int) -> int:
+    """
+    The Akasha / Inter-Knot rank under the stats, laid out like Akasha's: the
+    board's team, a top-% pill and the board's short name, then the rank.
+    Starts right of the constellation column; returns its bottom.
+    """
+    team = board.get("team") or []
+    top = board["rank"] / board["out"] * 100
+    if top < 0.01:
+        share = "<0.01"
+    elif top < 1:
+        share = f"{top:.2f}"
+    elif top < 10:
+        share = f"{top:.1f}"
+    else:
+        share = f"{top:.0f}"
+    top_text = f"TOP {share}%"
+    label = " ".join(p for p in (board["name"], board.get("variant")) if p).upper()
+    face = font(22, True)
+    # The board name goes beside the top-% pill, or under it when too long
+    top_w = text_width(top_text, face) + 28
+    beside = RANK_X1 - 14 - (RANK_X0 + 14 + top_w + 8) - 28
+    wrap = bool(label) and text_width(label, face) > beside
+    height = (96 if team else 0) + 112 + (48 if wrap else 0)
+    panel(card, (RANK_X0, y, RANK_X1, y + height))
+    cy = y + 14
+    if team:
+        size, gap = 62, 10
+        x = RANK_X0 + (RANK_X1 - RANK_X0 - (size * 4 + gap * 3)) // 2
+        for i, mate in enumerate(team[:4]):
+            bx = x + i * (size + gap)
+            draw.rounded_rectangle(
+                (bx, cy, bx + size, cy + size), 12, fill=colour + (200,)
+            )
+            if not mate.get("icon"):
+                # A flex slot: any character fits
+                face = font(30, True)
+                draw.text(
+                    (bx + size / 2 - text_width("?", face) / 2, cy + 12),
+                    "?",
+                    font=face,
+                    fill=FAINT,
+                )
+                continue
+            paste_fit(card, art.get(f"team{i}"), (bx, cy, bx + size, cy + size))
+            paste_fit(
+                card,
+                art.get(f"team_extra{i}"),
+                (bx - 4, cy + size - 24, bx + 26, cy + size + 6),
+            )
+            cons = mate.get("constellation")
+            if cons:
+                face = font(18, True)
+                draw.text(
+                    (bx + size - 14, cy + 2),
+                    str(cons),
+                    font=face,
+                    fill=WHITE,
+                    **OUTLINE,
+                )
+        cy += size + 20
+
+    light = tuple(min(255, c + 70) for c in colour) + (230,)
+    dark = (20, 20, 30, 255)
+    x = _pill(card, draw, RANK_X0 + 14, cy, top_text, light, dark)
+    if label:
+        if wrap:
+            cy += 48
+            x = RANK_X0 + 6
+        room = RANK_X1 - 14 - (x + 8) - 28
+        while label and text_width(label, face) > room:
+            label = label[:-2].rstrip(" ,") + "…"
+        _pill(card, draw, x + 8, cy, label, light, dark)
+    cy += 50
+
+    rank, out = f"{board['rank']:,}", f"/{board['out']:,}"
+    rface, oface = font(34, True), font(26)
+    width = text_width(rank, rface) + text_width(out, oface)
+    rx = (RANK_X0 + RANK_X1 - width) / 2
+    draw.text((rx, cy), rank, font=rface, fill=WHITE)
+    draw.text((rx + text_width(rank, rface), cy + 7), out, font=oface, fill=FAINT)
+    return y + height
+
+
 def _draw_build(spec: dict, art: dict) -> bytes:
     colour = spec["colour"]
     card = Image.new("RGB", (W, H), colour)
     draw = ImageDraw.Draw(card, "RGBA")
     _background(card, art, colour)
 
-    # Stats, top left
+    # Stats, top left, with the leaderboard rank under them as in the
+    # EnkaCard fork
     rows = spec["stats"][:10]
-    panel(card, (16, 16, 436, 32 + 46 * len(rows)))
+    stats_bottom = 32 + 46 * len(rows)
+    panel(card, (16, 16, 436, stats_bottom))
     bold = font(24, True)
     for i, (name, value) in enumerate(rows):
         y = 28 + 46 * i
         draw.text((36, y), name, font=fit_font(name, 24, 250), fill=SOFT)
         draw.text((416 - text_width(value, bold), y), value, font=bold, fill=WHITE)
+    if spec.get("leaderboard"):
+        _draw_rank(card, draw, spec["leaderboard"], art, colour, stats_bottom + 12)
 
     # Constellations / eidolons / mindscapes down the left edge
     for i, item in enumerate(spec["column"][:6]):
@@ -428,36 +528,6 @@ def _draw_build(spec: dict, art: dict) -> bytes:
     bw = text_width(badge, face) + 36
     panel(card, (930 - bw, 572, 930, 616), radius=22, fill=(0, 0, 0, 150))
     draw.text((930 - bw + 18, 578), badge, font=face, fill=GOLD if cv >= 200 else WHITE)
-
-    # Leaderboard rank, left of the CV badge
-    board = spec.get("leaderboard")
-    if board:
-        top = board["rank"] / board["out"] * 100
-        if top < 0.01:
-            share = "<0.01"
-        elif top < 1:
-            share = f"{top:.2f}"
-        elif top < 10:
-            share = f"{top:.1f}"
-        else:
-            share = f"{top:.0f}"
-        text = f"Top {share}%  ·  {board['rank']:,}/{board['out']:,}"
-        right = 930 - bw - 12
-        tface = font(26, True)
-        lface = font(22)
-        # Long board names are cut, not shrunk past reading
-        label = board["name"]
-        while label and text_width(label, lface) > 280:
-            label = label[:-2].rstrip(" ,") + "…"
-        rw = text_width(text, tface) + text_width(label, lface) + 50
-        panel(card, (right - rw, 572, right, 616), radius=22, fill=(0, 0, 0, 150))
-        draw.text((right - rw + 18, 581), label, font=lface, fill=SOFT)
-        draw.text(
-            (right - 18 - text_width(text, tface), 578),
-            text,
-            font=tface,
-            fill=GOLD if top <= 10 else WHITE,
-        )
 
     # Talents / traces / skills by the right panel, in two columns past four
     skills = spec["skills"]
@@ -978,8 +1048,9 @@ def _parse_rank(value) -> int:
 async def akasha_ranks(uid) -> dict:
     """
     A Genshin player's Akasha (akasha.cv) damage leaderboard ranks: character
-    id -> {name, rank, out} for each character's best-fitting board. Empty when
-    the player isn't on Akasha or it can't be reached.
+    id -> {name, variant, rank, out, calculation} for each character's
+    best-fitting board. Empty when the player isn't on Akasha or it can't be
+    reached.
     """
     cached = _akasha.get(str(uid))
     if cached and time.time() - cached[0] < RANK_TTL:
@@ -1004,15 +1075,66 @@ async def akasha_ranks(uid) -> dict:
             rank, out = _parse_rank(fit.get("ranking")), _parse_rank(fit.get("outOf"))
             character = _parse_rank(entry.get("characterId"))
             if rank and out and character:
+                variant = fit.get("variant") or ""
+                if isinstance(variant, dict):
+                    variant = variant.get("displayName") or variant.get("name") or ""
                 ranks[character] = {
-                    "name": fit.get("name") or fit.get("short") or "",
+                    # Akasha's own short board names: "MELT", "HYPER"…
+                    "name": fit.get("short") or fit.get("name") or "",
+                    "variant": str(variant),
                     "rank": rank,
                     "out": out,
+                    "calculation": str(fit.get("calculationId") or ""),
                 }
     except Exception:
         return {}
     _akasha[str(uid)] = (time.time(), ranks)
     return ranks
+
+
+_akasha_teams = {}
+TEAM_TTL = 6 * 60 * 60
+
+
+async def akasha_team(character_id: int, calculation: str) -> list[dict]:
+    """
+    The team an Akasha board assumes: [{icon, constellation, extra}] where extra
+    is the teammate's artifact set icon, or their weapon's. Empty if unknown.
+    """
+    cached = _akasha_teams.get(character_id)
+    if not (cached and time.time() - cached[0] < TEAM_TTL):
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={"User-Agent": BOT_UA},
+            ) as session:
+                url = f"{AKASHA_API}v2/leaderboards/categories"
+                params = {"characterId": str(character_id)}
+                async with session.get(url, params=params) as resp:
+                    data = await resp.json(content_type=None)
+        except Exception:
+            return []
+        boards = {}
+        categories = data.get("data", data) if isinstance(data, dict) else data
+        for category in categories or []:
+            for board in category.get("weapons") or []:
+                boards[str(board.get("calculationId"))] = board.get("teammates") or []
+        cached = (time.time(), boards)
+        _akasha_teams[character_id] = cached
+    team = []
+    for mate in cached[1].get(calculation, [])[:4]:
+        character, weapon = mate.get("character") or {}, mate.get("weapon") or {}
+        extra = character.get("artifactSetIcon") or ""
+        if not extra or extra.endswith("undefined.png"):
+            extra = weapon.get("icon") or ""
+        team.append(
+            {
+                "icon": character.get("icon"),
+                "constellation": character.get("constellation"),
+                "extra": extra,
+            }
+        )
+    return team
 
 
 async def interknot_ranks(uid) -> dict:
@@ -1043,7 +1165,7 @@ async def interknot_ranks(uid) -> dict:
             best = ranks.get(agent)
             if best is None or rank / out < best["rank"] / best["out"]:
                 ranks[agent] = {
-                    "name": board.get("FullName") or "",
+                    "name": board.get("Name") or board.get("FullName") or "",
                     "rank": rank,
                     "out": out,
                 }
@@ -1057,8 +1179,13 @@ async def build_card(game: str, character, owner: str, uid=None) -> bytes:
     """The build card for a showcase character of game (gi, hsr or zzz)"""
     if game == "gi":
         urls, spec = gi_build(character, owner)
-        if uid:
-            spec["leaderboard"] = (await akasha_ranks(uid)).get(character.id)
+        board = (await akasha_ranks(uid)).get(character.id) if uid else None
+        if board:
+            team = await akasha_team(character.id, board["calculation"])
+            spec["leaderboard"] = {**board, "team": team}
+            for i, mate in enumerate(team):
+                urls[f"team{i}"] = mate["icon"]
+                urls[f"team_extra{i}"] = mate["extra"]
     elif game == "hsr":
         urls, spec = hsr_build(character, owner)
     else:
