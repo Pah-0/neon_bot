@@ -58,6 +58,18 @@ def strip_markup(text: str) -> str:
     return text
 
 
+# Pillow draws shapes without anti-aliasing; they're drawn this many times
+# larger and shrunk, which smooths their edges
+SS = 4
+
+
+def smooth(size: tuple, draw) -> Image.Image:
+    """An RGBA layer of size with shapes drawn by draw(ImageDraw, scale)"""
+    big = Image.new("RGBA", (size[0] * SS, size[1] * SS), (0, 0, 0, 0))
+    draw(ImageDraw.Draw(big), SS)
+    return big.resize(size, Image.Resampling.LANCZOS)
+
+
 def tail_points(bx0: float, by1: float) -> list[tuple[float, float]]:
     """
     The bubble's tail, like WhatsApp's: its left side bends gradually out
@@ -165,17 +177,23 @@ def _draw_quote(
     bx0, by0, bx1, by1 = bubble_x, m, width - m, height - m
     tail = tail_points(bx0, by1)
 
+    def bubble(fill, dy=0):
+        def draw_bubble(d, k):
+            # Square at the bottom left, where the tail joins
+            d.rounded_rectangle(
+                (bx0 * k, (by0 + dy) * k, bx1 * k, (by1 + dy) * k),
+                28 * k,
+                fill=fill,
+                corners=(True, True, True, False),
+            )
+            d.polygon([(px * k, (py + dy) * k) for px, py in tail], fill=fill)
+
+        return smooth(card.size, draw_bubble)
+
     # A soft shadow so the white bubble stands out on light chats too
-    shadow = Image.new("RGBA", card.size, (0, 0, 0, 0))
-    shade = ImageDraw.Draw(shadow)
-    shade.rounded_rectangle(
-        (bx0, by0 + 3, bx1, by1 + 3),
-        28,
-        fill=(0, 0, 0, 70),
-        corners=(True, True, True, False),
+    card.alpha_composite(
+        bubble((0, 0, 0, 70), dy=3).filter(ImageFilter.GaussianBlur(6))
     )
-    shade.polygon([(x, y + 3) for x, y in tail], fill=(0, 0, 0, 70))
-    card.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(6)))
     draw = ImageDraw.Draw(card, "RGBA")
 
     # Profile picture, bottom left like a chat
@@ -184,41 +202,46 @@ def _draw_quote(
     )
 
     # Bubble with a tail toward the picture
-    # Square at the bottom left, where the tail joins
-    draw.rounded_rectangle(
-        (bx0, by0, bx1, by1),
-        28,
-        fill=BUBBLE + (255,),
-        corners=(True, True, True, False),
-    )
-    draw.polygon(tail, fill=BUBBLE + (255,))
+    card.alpha_composite(bubble(BUBBLE + (255,)))
 
     x, y = bx0 + PAD, by0 + PAD - 6
     draw_rich(card, draw, (x, y), name, NAME_SIZE, True, colour + (255,), emojis)
     y += NAME_SIZE + 14
     if tag:
-        # Tinted in the name's colour, with a fainter border; drawn on its
-        # own layer, since drawing on the transparent card wouldn't blend
-        layer = Image.new("RGBA", card.size, (0, 0, 0, 0))
-        ImageDraw.Draw(layer).rounded_rectangle(
-            (x, y, x + tag_w, y + tag_h),
-            tag_h // 2,
-            fill=colour + (34,),
-            outline=colour + (90,),
-            width=2,
+        # Tinted in the name's colour, with a fainter border; on its own
+        # layer, since drawing on the transparent card wouldn't blend
+        tx, ty = x, y
+        card.alpha_composite(
+            smooth(
+                card.size,
+                lambda d, k: d.rounded_rectangle(
+                    (tx * k, ty * k, (tx + tag_w) * k, (ty + tag_h) * k),
+                    tag_h // 2 * k,
+                    fill=colour + (34,),
+                    outline=colour + (90,),
+                    width=2 * k,
+                ),
+            )
         )
-        card.alpha_composite(layer)
         draw_rich(
             card, draw, (x + 18, y + 6), tag, TAG_SIZE, False, colour + (255,), emojis
         )
         y += tag_h + 12
     if reply:
         # Like WhatsApp: a tinted box with a bar in the replied sender's colour
-        rx1 = x + inner_w
-        draw.rounded_rectangle((x, y, rx1, y + reply_h), 14, fill=REPLY_BG)
-        draw.rounded_rectangle(
-            (x, y, x + 8, y + reply_h), 4, fill=reply["colour"] + (255,)
-        )
+        rx0, ry0, rx1 = x, y, x + inner_w
+
+        def draw_reply_box(d, k):
+            d.rounded_rectangle(
+                (rx0 * k, ry0 * k, rx1 * k, (ry0 + reply_h) * k), 14 * k, fill=REPLY_BG
+            )
+            d.rounded_rectangle(
+                (rx0 * k, ry0 * k, (rx0 + 8) * k, (ry0 + reply_h) * k),
+                4 * k,
+                fill=reply["colour"] + (255,),
+            )
+
+        card.alpha_composite(smooth(card.size, draw_reply_box))
         _draw_name(
             card,
             draw,
@@ -243,8 +266,9 @@ def _draw_quote(
         )
         y += reply_h + 14
     if media is not None:
-        mask = Image.new("L", media_size, 0)
-        ImageDraw.Draw(mask).rounded_rectangle((0, 0, *media_size), 18, fill=255)
+        big = Image.new("L", (media_size[0] * SS, media_size[1] * SS), 0)
+        ImageDraw.Draw(big).rounded_rectangle((0, 0, *big.size), 18 * SS, fill=255)
+        mask = big.resize(media_size, Image.Resampling.LANCZOS)
         layer = Image.new("RGBA", media_size, (0, 0, 0, 0))
         layer.paste(media, (0, 0), media if media.mode == "RGBA" else None)
         card.paste(

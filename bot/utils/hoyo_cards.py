@@ -274,10 +274,10 @@ def paste_fit(
     x = x0 + (x1 - x0 - image.width) // 2
     y = y0 + (y1 - y0 - image.height) // 2
     if circle:
-        mask = Image.new("L", image.size, 0)
-        ImageDraw.Draw(mask).ellipse(
-            (0, 0, image.width - 1, image.height - 1), fill=255
-        )
+        # Drawn 4× larger and shrunk, for a smooth (anti-aliased) edge
+        big = Image.new("L", (image.width * 4, image.height * 4), 0)
+        ImageDraw.Draw(big).ellipse((0, 0, big.width - 1, big.height - 1), fill=255)
+        mask = big.resize(image.size, Image.Resampling.LANCZOS)
         image.putalpha(Image.composite(image.getchannel("A"), mask, mask))
     card.paste(image, (x, y), image)
 
