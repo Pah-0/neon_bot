@@ -23,12 +23,7 @@ from bot.utils.msg_utils import (
     user_is_privileged,
     user_is_sudoer,
 )
-from bot.utils.os_utils import (
-    PR_STATE_FILE,
-    re_x,
-    restart_already_handled,
-    updater,
-)
+from bot.utils.os_utils import PR_STATE_FILE, re_x, restart_already_handled, updater
 from bot.utils.rss_utils import schedule_rss, scheduler
 from bot.utils.runtime import shutdown_services
 
