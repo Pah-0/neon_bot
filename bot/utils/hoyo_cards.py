@@ -32,6 +32,7 @@ FONTS = {
     "kr": "notosanskr/NotoSansKR%5Bwght%5D.ttf",
 }
 ENKA_UI = "https://enka.network/ui/"
+AMBER_UI = "https://gi.yatta.moe/assets/UI/"
 TIMEOUT = aiohttp.ClientTimeout(total=60)
 
 WHITE = (255, 255, 255, 255)
@@ -452,7 +453,10 @@ def _draw_rank(card, draw, board: dict, art: dict, colour: tuple):
         for i, mate in enumerate(team[:4]):
             bx = tx + i * (TILE + TILE_GAP)
             box = (bx, cy, bx + TILE, cy + TILE)
-            draw.rounded_rectangle(box, 10, fill=colour + (200,))
+            # Each tile in its own character's (or flex slot's) element
+            element = AKASHA_ELEMENTS.get(mate.get("element") or "", "")
+            tile = ELEMENT_COLOURS.get(element, colour)
+            draw.rounded_rectangle(box, 10, fill=tile + (220,))
             if mate.get("icon"):
                 paste_fit(card, art.get(f"team{i}"), tuple(map(int, box)))
                 paste_fit(
@@ -1239,7 +1243,10 @@ async def build_card(game: str, character, owner: str, uid=None) -> bytes:
             for i, mate in enumerate(team):
                 element = AKASHA_ELEMENTS.get(mate.get("element") or "", "")
                 urls[f"team{i}"] = mate["icon"] or (
-                    f"{ENKA_UI}UI_Buff_Element_{element}.png" if element else None
+                    # Enka has no Cryo one; Amber has all seven
+                    f"{AMBER_UI}UI_Buff_Element_{element}.png"
+                    if element
+                    else None
                 )
                 urls[f"team_extra{i}"] = mate["extra"]
     elif game == "hsr":

@@ -13,11 +13,12 @@ from bot.utils.msg_utils import (
     user_is_allowed,
     user_is_privileged,
 )
-from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
+from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
 
-# A WhatsApp poll takes at most 12 options; one is the Done button
-MAX_CHOICES = 11
-DONE = "✅ Done"
+# A WhatsApp poll takes at most 12 options, as many as a showcase holds
+MAX_CHOICES = 12
+# With no room for a Done option, cards go out once the ticking stops
+PICK_IDLE = 15
 GAMES = {
     "gi": {
         "name": "Genshin",
@@ -84,17 +85,29 @@ def find_character(characters: list, choice: str):
 
 async def pick_characters(event, characters: list) -> list:
     """
-    Sends a poll of the showcase where several can be ticked, counted once
-    Done is ticked too; the chosen characters in showcase order, or []
+    Sends a poll of the showcase where several can be ticked; the choice is
+    taken PICK_IDLE seconds after the last tick. The chosen characters in
+    showcase order, or [] if nothing was ticked within 5 minutes.
     """
     options = {
         i: [f"{i + 1}. {c.name} (Lv. {c.level})", c.name]
         for i, c in enumerate(characters[:MAX_CHOICES])
     }
-    options["done"] = [DONE]
+    state = {"chosen": [], "changed": asyncio.Event()}
+
+    async def on_vote(vote, poll_key):
+        if vote.from_user.id != event.from_user.id:
+            return
+        info = active_poll_dict.get(poll_key.ID) or {}
+        selected = await bot.client.decrypt_poll_vote(vote.message)
+        state["chosen"] = [
+            info[o.hex()] for o in selected.selectedOptions if o.hex() in info
+        ]
+        state["changed"].set()
+
     title = (
-        f"{event.from_user.name}, tick the characters you want build cards for, "
-        f"then {DONE}."
+        f"{event.from_user.name}, tick the characters you want build cards for. "
+        f"They're sent {PICK_IDLE} seconds after your last tick."
     )
     poll_msg_, msg_ = await create_sudo_button(
         title,
@@ -102,8 +115,9 @@ async def pick_characters(event, characters: list) -> list:
         event.chat.jid,
         event.from_user.id,
         len(options),
-        DONE,
+        None,
         event.message,
+        callback=on_vote,
     )
     poll_msg = construct_msg_and_evt(
         event.chat.id,
@@ -114,10 +128,21 @@ async def pick_characters(event, characters: list) -> list:
         bot.client.me.JID.Server,
         poll_msg_,
     )
-    chosen = await wait_for_button_response(msg_.ID)
-    await poll_msg.delete()
+    try:
+        await asyncio.wait_for(state["changed"].wait(), timeout=300)
+        while True:
+            state["changed"].clear()
+            try:
+                await asyncio.wait_for(state["changed"].wait(), timeout=PICK_IDLE)
+            except asyncio.TimeoutError:
+                break
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        active_poll_dict.pop(msg_.ID, None)
+        await poll_msg.delete()
     return [
-        characters[i] for i in sorted(k for k in chosen or [] if isinstance(k, int))
+        characters[i] for i in sorted(k for k in state["chosen"] if isinstance(k, int))
     ]
 
 
@@ -245,8 +270,9 @@ async def gi_profile(event, args, client):
     Usage: gi [uid] [character] [-c] [-hide]
         uid: a Genshin UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
-        -c : pick characters for build cards from a poll (tick several, then
-            Done); with only one in the showcase, its card is sent straight away
+        -c : pick characters for build cards from a poll; tick as many as you
+            like, and their cards are sent 15 seconds after your last tick.
+            With only one in the showcase, its card is sent straight away
         -hide : hide the UID on the cards
         -set <uid> : save your Genshin UID
         -unset : forget your saved Genshin UID
@@ -265,8 +291,9 @@ async def hsr_profile(event, args, client):
     Usage: hsr [uid] [character] [-c] [-hide]
         uid: a Star Rail UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
-        -c : pick characters for build cards from a poll (tick several, then
-            Done); with only one in the showcase, its card is sent straight away
+        -c : pick characters for build cards from a poll; tick as many as you
+            like, and their cards are sent 15 seconds after your last tick.
+            With only one in the showcase, its card is sent straight away
         -hide : hide the UID on the cards
         -set <uid> : save your Star Rail UID
         -unset : forget your saved Star Rail UID
@@ -286,8 +313,9 @@ async def zzz_profile(event, args, client):
     Usage: zzz [uid] [agent] [-c] [-hide]
         uid: a ZZZ UID; leave it out to use the one you saved
         agent: a showcase number or name, to go straight to its build card
-        -c : pick agents for build cards from a poll (tick several, then
-            Done); with only one in the showcase, its card is sent straight away
+        -c : pick agents for build cards from a poll; tick as many as you
+            like, and their cards are sent 15 seconds after your last tick.
+            With only one in the showcase, its card is sent straight away
         -hide : hide the UID on the cards
         -set <uid> : save your ZZZ UID
         -unset : forget your saved ZZZ UID
