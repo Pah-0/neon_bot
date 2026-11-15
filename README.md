@@ -55,7 +55,7 @@ None of these need an API key.
 - **Manga & Light Novels**: Manga, manhwa, manhua and light novels from AniList.
 - **Web Novels**: Chinese, Korean and Japanese web and light novels from MangaUpdates, and Wattpad stories.
 - **Films & TV**: Films and series with IMDb ratings, cast and plot, from Cinemeta.
-- **Fanfics**: AO3 works, when AO3 lets the bot in (it currently refuses bots).
+- **Fanfics**: AO3 works.
 
 ### 🛠 Utilities
 - **AFK**: Set an AFK status; messages that tag or reply to you are forwarded to your DM.
@@ -90,7 +90,7 @@ Each sends a poll when several titles match.
 - `.manga <title|id> [-ln] [-m]`: Manga, manhwa and manhua from AniList; `-ln` for light novels, `-m` for a MyAnimeList id.
 - `.novel <title> [-wp]`: Web and light novels from MangaUpdates; `-wp` for Wattpad stories.
 - `.imdb <title|tt id> [-movie|-tv]`: Films and series with IMDb ratings, from Cinemeta.
-- `.fic <title|work id|link>`: An AO3 work, when AO3 lets the bot in.
+- `.fic <title|work id|link>`: An AO3 work.
 
 ### Media & Tools
 - `.sticker`: Convert replied media to a sticker.
