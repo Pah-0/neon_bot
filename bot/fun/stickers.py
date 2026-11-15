@@ -1,4 +1,11 @@
+import asyncio
+import hashlib
+import io
+import os
 import random
+
+import aiohttp
+from PIL import Image
 
 
 def ran_stick():
@@ -1137,3 +1144,41 @@ def ran_stick():
     )
     y = random.choice(stickers)
     return y
+
+
+# Each sticker is downloaded once; some hosts (Fandom's image CDN) refuse
+# repeated or automated fetches, and a refusal must not reach the sticker
+# converter, which treats anything that isn't an image as a video
+STICKER_CACHE = os.path.join(".cache", "stickers")
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+
+async def sticker_bytes(url: str) -> bytes | None:
+    """url's image, from the cache or downloaded and cached; None if it isn't one"""
+    path = os.path.join(STICKER_CACHE, hashlib.sha1(url.encode()).hexdigest())
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read()
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.read()
+        Image.open(io.BytesIO(data)).verify()
+    except Exception:
+        return None
+    os.makedirs(STICKER_CACHE, exist_ok=True)
+    with open(path + ".part", "wb") as f:
+        f.write(data)
+    os.replace(path + ".part", path)
+    return data
+
+
+async def random_sticker(tries: int = 5) -> bytes | None:
+    """A random sticker's image, skipping ones that can't be fetched"""
+    for _ in range(tries):
+        if data := await sticker_bytes(ran_stick()):
+            return data
+        await asyncio.sleep(0)
+    return None

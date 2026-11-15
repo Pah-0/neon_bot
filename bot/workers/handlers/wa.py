@@ -27,7 +27,7 @@ from bot import Message
 from bot import jid as wa_jid
 from bot.config import bot, conf
 from bot.fun.quips import enquip, enquip4
-from bot.fun.stickers import ran_stick
+from bot.fun.stickers import random_sticker
 from bot.others.exceptions import StopAutoHandlers, StopHandlers
 from bot.pkgs.tikmate_dl import TikmateAsync
 from bot.utils.bot_utils import (
@@ -665,12 +665,17 @@ async def sticker_reply(event, args, client, overide=False):
             else event
         )
         await event.send_typing_status()
-        random_sticker = ran_stick()
+        # A fetched and checked image, so a refused link can't reach the
+        # sticker converter
+        sticker = await random_sticker()
+        if not sticker:
+            log(e="Couldn't fetch any sticker to reply with")
+            return await event.send_typing_status(False)
         await clean_reply(
             event,
             reply,
             "reply_sticker",
-            random_sticker,
+            sticker,
             quote=True,
             name=random.choice((enquip(), enquip4())),
             packname=me.PushName,
