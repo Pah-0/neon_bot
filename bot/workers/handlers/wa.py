@@ -103,6 +103,7 @@ from bot.utils.rank_card import ranking_card
 from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
+from bot.workers.handlers.members import keep_out_banned
 
 Image.MAX_IMAGE_PIXELS = 400_000_000
 
@@ -2320,7 +2321,10 @@ async def gc_handler(gc_msg):
                 return
             leave = True
         elif gc_msg.Join:
-            pass
+            # Group-banned users are removed again, and not welcomed
+            if removed := await keep_out_banned(gc_msg):
+                if all(j.User in removed for j in gc_msg.Join):
+                    return
         else:
             return await logger(e=f"Unknown GroupInfoEv {gc_msg}")
         if not bot.group_dict.get(gc_msg.JID.User, {}).get("greetings"):

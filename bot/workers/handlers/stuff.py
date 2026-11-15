@@ -127,6 +127,10 @@ async def manage_cmds(event, args, client):
 {pre}restart - *[Owner | Sudo] Restarts bot*
 {pre}ytdl_* - *[Owner | Sudo | Admin] Disables/Enables auto media download (anyone in PM)*
 {pre}amr_* - *[Owner | Sudo | Admin] Disables/Enables Auto msg ranking*
+{pre}kick - *[Owner | Sudo | Admin] Remove members from the group*
+{pre}gban - *[Owner | Sudo | Admin] Ban members from the group: removed now and whenever they rejoin (no arguments lists them)*
+{pre}gunban - *[Owner | Sudo | Admin] Lift a group ban*
+{pre}add - *[Owner | Sudo | Admin] Add people to the group by number (sends the invite link if their privacy blocks it)*
 {pre}mute - *[Owner | Sudo | Admin] Auto-delete messages from users, a role's members (-role) or everyone outside a role (-except)*
 {pre}enable_atd - *[Owner | Sudo | Admin] Enables Auto deletion of @all tags*
 {pre}disable_atd - *[Owner | Sudo | Admin] Disables Auto deletion of @all tags*

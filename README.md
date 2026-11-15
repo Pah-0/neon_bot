@@ -111,6 +111,9 @@ The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds`, `.t
 - `.pin` / `.unpin`: Pin or unpin a replied message.
 - `.purge`: Mass delete messages.
 - `.mute [-a/-rm/-c] [-role <role> | -except <role>]`: Manage users whose messages are auto-deleted; `-role` mutes a role's members and `-except` mutes everyone outside a role. Admins, owner and sudo are never muted.
+- `.kick <user|@mention>`: Remove members from the group (or reply to their message).
+- `.gban [user|@mention]` / `.gunban <user>`: Ban members from the group, so they're removed now and again whenever they rejoin, even before they've joined; with no arguments, list the banned / lift a ban. Unlike `.ban`, which only stops someone using the bot.
+- `.add <number>`: Add people to the group by phone number; anyone whose privacy settings block it is sent the invite link.
 - `.enable_atd` / `.disable_atd`: Toggle auto-deleting mass tags.
 - `.ytdl_enable` / `.ytdl_disable`: Toggle the auto downloader in a chat.
 - `.enable` / `.disable`: Enable or disable bot replies in a group.
