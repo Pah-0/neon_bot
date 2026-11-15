@@ -1,3 +1,4 @@
+import re
 from inspect import getdoc
 
 from bot.config import bot
@@ -17,16 +18,49 @@ from bot.utils.gift_utils import fetch_codes, get_msg_from_codes
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
+    get_args,
     user_is_admin,
     user_is_allowed,
     user_is_privileged,
 )
 
+CHAT_FLAGS = ("add", "rm", "pin", "unpin", "get")
+# ".", "default", or a chat id with an optional :server
+_chat = re.compile(r"[0-9A-Za-z][0-9A-Za-z._@-]*(:[0-9A-Za-z.]+)?")
+
+
+def parse_chat_flags(args: str):
+    """(flags, words): -add -rm -pin -unpin -get, and the rest (chat…)"""
+    flags, rest = get_args(
+        *([f"-{f}", "store_true"] for f in CHAT_FLAGS), to_parse=args, get_unknown=True
+    )
+    return flags, rest.split()
+
+
+def valid_chat(chat: str) -> bool:
+    return chat in (".",) or chat.casefold() == "default" or bool(_chat.fullmatch(chat))
+
+
+def drop_junk_chats(chats, pinned) -> list:
+    """
+    Entries saved from flags read as a chat name (like "-pin ." before
+    several flags could be given at once); removed and returned
+    """
+    junk = [c for c in chats if isinstance(c, str) and c.startswith("-")]
+    for c in junk:
+        if isinstance(chats, dict):
+            chats.pop(c)
+        else:
+            chats.remove(c)
+        if c in pinned:
+            pinned.remove(c)
+    return junk
+
 
 async def manage_autogift_chat(event, args, client):
     try:
-        action, _, chat = args.strip().partition(" ")
-        chat = chat.strip()
+        flags, words = parse_chat_flags(args)
+        chat = words[0] if words else ""
         chats = bot.gift_dict["chats"]
         pinned = bot.gift_dict["pin"]
         this_chat = f"{event.chat.id}:{event.chat.server}"
@@ -38,14 +72,17 @@ async def manage_autogift_chat(event, args, client):
             group_info = await client.get_group_info(event.chat.jid)
             if not user_is_admin(user, group_info.Participants):
                 return await event.react("🚫")
-            if action == "-get":
+            if flags.get:
                 if this_chat not in chats:
                     return await event.reply("*New codes aren't posted here.*")
                 pin = " and pinned for a day" if this_chat in pinned else ""
                 return await event.reply(f"*New codes are posted here{pin}.*")
             if chat and chat not in (".", this_chat, event.chat.id):
                 return await event.reply("*Admins can only manage this chat (.)!*")
-        if action == "-get":
+        junk = drop_junk_chats(chats, pinned)
+        if flags.get:
+            if junk:
+                await save2db2(bot.gift_dict, "gift")
             if not chats:
                 return await event.reply("*No chat set!*")
             return await event.reply(
@@ -57,36 +94,52 @@ async def manage_autogift_chat(event, args, client):
                     sep=", ",
                 )
             )
-        if action not in ("-add", "-rm", "-pin", "-unpin") or not chat:
+        actions = [f for f in ("add", "rm", "pin", "unpin") if getattr(flags, f)]
+        # -rm stands alone; -pin and -unpin together make no sense
+        if (
+            not actions
+            or not chat
+            or not valid_chat(chat)
+            or len(words) > 1
+            or (flags.rm and len(actions) > 1)
+            or (flags.pin and flags.unpin)
+        ):
             return await event.reply(getdoc(gift_codes))
         if chat in (".", event.chat.id):
             chat = this_chat
         elif chat.casefold() == "default":
             chat = None
-        if action == "-add":
+        done = []
+        if flags.add:
             if chat in chats:
-                return await event.reply("*Chat already added!*")
-            chats.append(chat)
-            done = "added"
-        elif chat not in chats:
+                done.append("already added")
+            else:
+                chats.append(chat)
+                done.append("added")
+        if chat not in chats:
             return await event.reply("*Given chat was never added!*")
-        elif action == "-rm":
+        if flags.rm:
             chats.remove(chat)
             if chat in pinned:
                 pinned.remove(chat)
-            done = "removed"
-        elif action == "-pin":
+            done.append("removed")
+        if flags.pin:
             if chat in pinned:
-                return await event.reply("*Already pinning in this chat!*")
-            pinned.append(chat)
-            done = "set to pin new codes for a day (if I'm an admin there)"
-        else:
+                done.append("already pinning new codes")
+            else:
+                pinned.append(chat)
+                done.append("set to pin new codes for a day (if I'm an admin there)")
+        if flags.unpin:
             if chat not in pinned:
-                return await event.reply("*Wasn't pinning in this chat!*")
-            pinned.remove(chat)
-            done = "set to stop pinning new codes"
+                done.append("not pinning new codes")
+            else:
+                pinned.remove(chat)
+                done.append("set to stop pinning new codes")
         await save2db2(bot.gift_dict, "gift")
-        await event.reply(f"*{chat or 'default'}* has been {done}.")
+        msg = f"*{chat or 'default'}*: " + ", ".join(done) + "."
+        if junk:
+            msg += "\n_Removed broken entries: " + ", ".join(junk) + "_"
+        await event.reply(msg)
     except Exception:
         await logger(Exception)
         await event.react("❌")
@@ -105,6 +158,7 @@ async def gift_codes(event, args, client):
             for a day; needs the bot to be an admin there
         -unpin <chat> : [Owner | Sudo | Admin] stop pinning them
     chat: . for this chat, default for RSS_CHAT, or chat_id:server
+    Flags can be combined, e.g. -add -pin . to add this chat and pin there.
     Group admins can only manage the group they're in.
     New codes are checked for every 30 minutes.
     """
@@ -133,9 +187,9 @@ async def gift_codes(event, args, client):
 
 async def manage_farm_chat(event, args, client):
     try:
-        action, _, rest = args.strip().partition(" ")
-        chat, _, region = rest.strip().partition(" ")
-        region = region.strip().casefold() or DEFAULT_REGION
+        flags, words = parse_chat_flags(args)
+        chat = words[0] if words else ""
+        region = words[1].casefold() if len(words) > 1 else DEFAULT_REGION
         chats = bot.gift_dict["farm"]
         pinned = bot.gift_dict.setdefault("farm_pin", [])
         this_chat = f"{event.chat.id}:{event.chat.server}"
@@ -147,7 +201,7 @@ async def manage_farm_chat(event, args, client):
             group_info = await client.get_group_info(event.chat.jid)
             if not user_is_admin(user, group_info.Participants):
                 return await event.react("🚫")
-            if action == "-get":
+            if flags.get:
                 if this_chat not in chats:
                     return await event.reply("*The farm schedule isn't posted here.*")
                 pin = " and pinned for a day" if this_chat in pinned else ""
@@ -156,7 +210,10 @@ async def manage_farm_chat(event, args, client):
                 )
             if chat and chat not in (".", this_chat, event.chat.id):
                 return await event.reply("*Admins can only manage this chat (.)!*")
-        if action == "-get":
+        junk = drop_junk_chats(chats, pinned)
+        if flags.get:
+            if junk:
+                await save2db2(bot.gift_dict, "gift")
             if not chats:
                 return await event.reply("*No chat set!*")
             return await event.reply(
@@ -170,41 +227,56 @@ async def manage_farm_chat(event, args, client):
                     sep=", ",
                 )
             )
+        actions = [f for f in ("add", "rm", "pin", "unpin") if getattr(flags, f)]
+        # -rm stands alone; -pin and -unpin together make no sense
         if (
-            action not in ("-add", "-rm", "-pin", "-unpin")
+            not actions
             or not chat
+            or not valid_chat(chat)
+            or len(words) > 2
             or region not in REGIONS
+            or (flags.rm and len(actions) > 1)
+            or (flags.pin and flags.unpin)
         ):
             return await event.reply(getdoc(farm))
         if chat in (".", event.chat.id):
             chat = this_chat
         elif chat.casefold() == "default":
             chat = ""
-        if action == "-add":
+        done = []
+        if flags.add:
             if chats.get(chat) == region:
-                return await event.reply("*Chat already added!*")
-            chats[chat] = region
-            done = f"set to get the farm schedule at the {
-                REGION_NAMES[region]} server's reset"
-        elif chat not in chats:
+                done.append("already added")
+            else:
+                chats[chat] = region
+                done.append(f"set to get the farm schedule at the {
+                        REGION_NAMES[region]} server's reset")
+        if chat not in chats:
             return await event.reply("*Given chat was never added!*")
-        elif action == "-rm":
+        if flags.rm:
             chats.pop(chat)
             if chat in pinned:
                 pinned.remove(chat)
-            done = "removed"
-        elif action == "-pin":
+            done.append("removed")
+        if flags.pin:
             if chat in pinned:
-                return await event.reply("*Already pinning in this chat!*")
-            pinned.append(chat)
-            done = "set to pin the farm schedule for a day (if I'm an admin there)"
-        else:
+                done.append("already pinning the farm schedule")
+            else:
+                pinned.append(chat)
+                done.append(
+                    "set to pin the farm schedule for a day (if I'm an admin there)"
+                )
+        if flags.unpin:
             if chat not in pinned:
-                return await event.reply("*Wasn't pinning in this chat!*")
-            pinned.remove(chat)
-            done = "set to stop pinning the farm schedule"
+                done.append("not pinning the farm schedule")
+            else:
+                pinned.remove(chat)
+                done.append("set to stop pinning the farm schedule")
         await save2db2(bot.gift_dict, "gift")
-        await event.reply(f"*{chat or 'default'}* has been {done}.")
+        msg = f"*{chat or 'default'}*: " + ", ".join(done) + "."
+        if junk:
+            msg += "\n_Removed broken entries: " + ", ".join(junk) + "_"
+        await event.reply(msg)
     except Exception:
         await logger(Exception)
         await event.react("❌")
@@ -255,6 +327,7 @@ async def farm(event, args, client):
         -unpin <chat> : [Owner | Sudo | Admin] stop pinning it
         -get : [Owner | Sudo | Admin] list the chats it's posted to
     chat: . for this chat, default for RSS_CHAT, or chat_id:server
+    Flags can be combined, e.g. -add -pin . eu to add this chat and pin there.
     Group admins can only manage the group they're in.
     """
     if args.startswith("-"):

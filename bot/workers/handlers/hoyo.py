@@ -1,4 +1,5 @@
 import asyncio
+import re
 from inspect import getdoc
 
 from bot.config import bot
@@ -16,6 +17,7 @@ from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
     construct_msg_and_evt,
+    get_args,
     user_is_allowed,
     user_is_privileged,
 )
@@ -74,29 +76,30 @@ async def hoyo_search(event, args, client):
             return
         if not user_is_allowed(user):
             return await event.react("⛔")
-    game = kind = level = None
-    sections, words = [], []
-    tokens = args.split()
-    while tokens:
-        word = tokens.pop(0)
-        flag = word.casefold()
-        if flag.startswith("-lv"):
-            number = flag[3:] or (tokens.pop(0) if tokens else "")
-            if number.isdigit() and 1 <= int(number) <= 15:
-                level = int(number)
-            else:
-                return await event.reply("*-lv takes a level from 1 to 15.*")
-        elif flag.lstrip("-") in GAMES and flag.startswith("-"):
-            game = flag.lstrip("-")
-        elif flag in KIND_FLAGS:
-            kind = KIND_FLAGS[flag]
-        elif flag in ("-t", "-c"):
-            sections.append(flag[1])
-        elif flag in ("-full", "-f"):
-            sections += ["t", "c"]
-        else:
-            words.append(word)
-    query = " ".join(words)
+    # "-lv13" is "-lv 13"
+    args = re.sub(r"(?i)(?<!\S)-lv(\d+)", r"-lv \1", args)
+    flags, query = get_args(
+        *([f"-{g}", "store_true"] for g in GAMES),
+        *([f, "store_true"] for f in KIND_FLAGS),
+        ["-t", "store_true"],
+        ["-c", "store_true"],
+        ["-full", "store_true"],
+        ["-f", "store_true"],
+        "-lv",
+        to_parse=args,
+        get_unknown=True,
+    )
+    game = next((g for g in GAMES if getattr(flags, g)), None)
+    kind = next(
+        (k for f, k in KIND_FLAGS.items() if getattr(flags, f.lstrip("-"))), None
+    )
+    sections = [s for s in ("t", "c") if getattr(flags, s) or flags.full or flags.f]
+    level = None
+    if flags.lv is not None:
+        if not (flags.lv.isdigit() and 1 <= int(flags.lv) <= 15):
+            return await event.reply("*-lv takes a level from 1 to 15.*")
+        level = int(flags.lv)
+    query = query.strip()
     if not query:
         return await event.reply(getdoc(hoyo_search))
     status = None
