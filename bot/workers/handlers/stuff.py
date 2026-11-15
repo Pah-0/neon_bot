@@ -15,7 +15,8 @@ from bot.utils.msg_utils import (
 async def getcmds(event, args, client):
     """
     List the bot's main commands.
-    Tools, fun and role commands are listed by tools, fun and roles.
+    Game, lookup, tools, fun, role and management commands are listed by
+    games, lookup, tools, fun, roles and manage.
 
     Arguments: None
     """
@@ -30,20 +31,91 @@ async def getcmds(event, args, client):
         msg = f"""{pre}start - *Hi!*
 {pre}ping - *Check if bot is alive*
 {pre}afk - *Enable AFK mode*
-{pre}anime - *Fetch anime info from anilist*
-{pre}airing - *Fetch anime airing info from anilist*
-{pre}gicodes - *Get Genshin Impact redeem codes ([Owner | Sudo | Admin] -add/-rm/-get chats to auto-post new ones, -pin/-unpin to pin them for a day)*
-{pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily, -pin/-unpin to pin it for a day)*
-{pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*
-{pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
-{pre}quote - *Reply to a message to turn it into a quote sticker (-img for a picture)*
-{pre}insession - *Start an Ace Attorney objection session*
-{pre}renderobj - *Render an objection session into a video*
-{pre}werewolf - *Play a game of Werewolf*
+{pre}games - *Get game commands: Werewolf, Genshin, Star Rail and ZZZ*
+{pre}lookup - *Get commands to look up anime, manga, novels, fanfics, films and TV*
 {pre}fun - *Get fun commands*
 {pre}tools - *Get tools commands*
 {pre}roles - *Get commands for roles*
-{pre}sudo - *[Owner] View/Modify sudoers*
+{pre}manage - *Get bot and group management commands*"""
+        await event.reply(msg)
+    except Exception as e:
+        await logger(Exception)
+        return await event.reply(f"*Error:*\n{e}")
+
+
+async def game_cmds(event, args, client):
+    """
+    List the game commands: Werewolf, and those for Genshin Impact, Honkai:
+    Star Rail and Zenless Zone Zero.
+
+    Arguments: None
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        pre = conf.CMD_PREFIX
+        msg = f"""{pre}werewolf - *Play a game of Werewolf*
+
+*Genshin Impact:*
+{pre}gicodes - *Get Genshin Impact redeem codes ([Owner | Sudo | Admin] -add/-rm/-get chats to auto-post new ones, -pin/-unpin to pin them for a day)*
+{pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily, -pin/-unpin to pin it for a day)*
+
+*Genshin, Star Rail & ZZZ:*
+{pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
+{pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*"""
+        await event.reply(msg)
+    except Exception as e:
+        await logger(Exception)
+        return await event.reply(f"*Error:*\n{e}")
+
+
+async def lookup_cmds(event, args, client):
+    """
+    List the commands for looking up anime, manga, light and web novels,
+    Wattpad stories, AO3 fanfics, films and TV series.
+
+    Arguments: None
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        pre = conf.CMD_PREFIX
+        msg = f"""{pre}anime - *Fetch anime info from anilist*
+{pre}airing - *Fetch anime airing info from anilist*
+{pre}manga - *Fetch manga info from AniList (-ln for light novels)*
+{pre}novel - *Fetch web and light novel info from MangaUpdates (-wp for Wattpad stories)*
+{pre}fic - *Look up a fanfic on AO3 (when AO3 lets the bot in)*
+{pre}imdb - *Fetch film and TV series info with IMDb ratings (-movie or -tv to narrow it)*"""
+        await event.reply(msg)
+    except Exception as e:
+        await logger(Exception)
+        return await event.reply(f"*Error:*\n{e}")
+
+
+async def manage_cmds(event, args, client):
+    """
+    List the commands for managing the bot and groups: the ones for owners,
+    sudoers, group admins and devs.
+
+    Arguments: None
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        pre = conf.CMD_PREFIX
+        msg = f"""{pre}sudo - *[Owner] View/Modify sudoers*
 {pre}pause - *[Owner] Pauses/Unpauses bot*
 {pre}logs - *[Owner] Get bot logs*
 {pre}ban - *[Owner | Sudo] Prevent a user from using bot*

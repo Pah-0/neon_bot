@@ -36,6 +36,7 @@ from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import farm, gift_codes
 from .workers.handlers.hoyo import hoyo_search
+from .workers.handlers.lookup import fic, imdb, manga, novel
 from .workers.handlers.manage import (
     auto_del_as_mute,
     ban,
@@ -61,7 +62,15 @@ from .workers.handlers.objection import insession, render_objection
 from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
 from .workers.handlers.quote import quote
 from .workers.handlers.role import roles
-from .workers.handlers.stuff import gc_info, getcmds, hello, up
+from .workers.handlers.stuff import (
+    game_cmds,
+    gc_info,
+    getcmds,
+    hello,
+    lookup_cmds,
+    manage_cmds,
+    up,
+)
 from .workers.handlers.tldr import eli5, razor, tldr
 from .workers.handlers.translate import auto_translate, autotranslate
 from .workers.handlers.wa import gc_handler, handle_self_join, sticker_reply
@@ -222,6 +231,21 @@ async def _(client: NewAClient, message: Event):
     await event_handler(message, getcmds)
 
 
+@bot.register("games")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, game_cmds)
+
+
+@bot.register("lookup")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, lookup_cmds)
+
+
+@bot.register("manage")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, manage_cmds)
+
+
 @bot.register("afk")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, activate_afk)
@@ -275,6 +299,26 @@ async def _(client: NewAClient, message: Event):
 @bot.register("airing")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, airing, require_args=True)
+
+
+@bot.register("manga")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, manga, client)
+
+
+@bot.register("imdb")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, imdb, client)
+
+
+@bot.register("novel")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, novel, client)
+
+
+@bot.register("fic")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, fic, client)
 
 
 @bot.register("ban")
