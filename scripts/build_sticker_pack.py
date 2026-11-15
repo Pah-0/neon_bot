@@ -11,6 +11,7 @@ import hashlib
 import io
 import re
 import sys
+import time
 import urllib.request
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -22,16 +23,24 @@ STICKERS = Path(__file__).resolve().parent.parent / "bot" / "fun" / "stickers.py
 USER_AGENT = "neon_bot sticker mirror (+https://github.com/Pah-0/neon_bot)"
 
 
-def fetch(url: str) -> tuple[str, bytes | None, str]:
-    """(url, image bytes or None, why it was left out)"""
+def fetch(url: str, tries: int = 3) -> tuple[str, bytes | None, str]:
+    """
+    (url, image bytes or None, why it was left out); a failed download is
+    tried again, since hosts time out now and then
+    """
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=30) as resp:
-            data = resp.read()
-        Image.open(io.BytesIO(data)).verify()
-    except Exception as e:
-        return url, None, str(e)
-    return url, data, ""
+    why = ""
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as resp:
+                data = resp.read()
+            Image.open(io.BytesIO(data)).verify()
+            return url, data, ""
+        except Exception as e:
+            why = str(e)
+            if attempt < tries - 1:
+                time.sleep(2 * (attempt + 1))
+    return url, None, why
 
 
 def main(out: str) -> int:

@@ -2,14 +2,10 @@ name: sticker pack
 
 # Mirrors the reply stickers into a release attachment the bot downloads,
 # so it doesn't fetch each one from its host (Fandom's CDN refuses the bot)
+# Run by hand (Actions → sticker pack → Run workflow) after changing the
+# sticker list
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - bot/fun/stickers.py
-      - scripts/build_sticker_pack.py
-      - .github/workflows/stickers.yml
 
 concurrency:
   group: ${{ github.workflow }}
