@@ -178,7 +178,9 @@ async def game_profile(event, args, game: str):
         return await save_uid(event, game, uid)
     hide = any(w.casefold() in ("-hide", "-h") for w in words)
     pick = any(w.casefold() == "-c" for w in words)
-    words = [w for w in words if w.casefold() not in ("-hide", "-h", "-c")]
+    # -2x draws the cards at twice the resolution
+    scale = 2 if any(w.casefold() == "-2x" for w in words) else 1
+    words = [w for w in words if w.casefold() not in ("-hide", "-h", "-c", "-2x")]
     if words and words[0].isdigit() and len(words[0]) in info["uid_lengths"]:
         uid, words = words[0], words[1:]
     else:
@@ -214,7 +216,7 @@ async def game_profile(event, args, game: str):
                 return
             await status.edit(f"*Drawing {character.name}'s card…*")
             return await event.reply_photo(
-                await build_card(game, character, owner, uid)
+                await build_card(game, character, owner, uid, scale)
             )
 
         if pick:
@@ -232,7 +234,9 @@ async def game_profile(event, args, game: str):
             )
             for character in chosen:
                 status = await event.reply(f"*Drawing {character.name}'s card…*")
-                await event.reply_photo(await build_card(game, character, owner, uid))
+                await event.reply_photo(
+                    await build_card(game, character, owner, uid, scale)
+                )
                 await status.delete()
                 status = None
             return
@@ -247,7 +251,7 @@ async def game_profile(event, args, game: str):
             if characters
             else "\n_No characters are public in their showcase._"
         )
-        card = await profile_card(game, player, characters, uid_text)
+        card = await profile_card(game, player, characters, uid_text, scale)
         await event.reply_photo(card, caption)
     except Exception as e:
         await logger(Exception)
@@ -267,12 +271,13 @@ async def gi_profile(event, args, client):
     the characters in their in-game showcase. Build cards show stats, weapon,
     artifacts with crit value and roll counts, and the Akasha rank.
 
-    Usage: gi [uid] [character] [-c] [-hide]
+    Usage: gi [uid] [character] [-c] [-2x] [-hide]
         uid: a Genshin UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
         -c : pick characters for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
+        -2x : draw the cards at twice the resolution, for a sharper image
         -hide : hide the UID on the cards
         -set <uid> : save your Genshin UID
         -unset : forget your saved Genshin UID
@@ -288,12 +293,13 @@ async def hsr_profile(event, args, client):
     characters in their in-game showcase. Build cards show stats, light cone,
     relics with crit value and roll counts, traces and eidolons.
 
-    Usage: hsr [uid] [character] [-c] [-hide]
+    Usage: hsr [uid] [character] [-c] [-2x] [-hide]
         uid: a Star Rail UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
         -c : pick characters for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
+        -2x : draw the cards at twice the resolution, for a sharper image
         -hide : hide the UID on the cards
         -set <uid> : save your Star Rail UID
         -unset : forget your saved Star Rail UID
@@ -310,12 +316,13 @@ async def zzz_profile(event, args, client):
     stats, W-Engine, drive discs with crit value and roll counts, skills,
     mindscapes and the Inter-Knot rank.
 
-    Usage: zzz [uid] [agent] [-c] [-hide]
+    Usage: zzz [uid] [agent] [-c] [-2x] [-hide]
         uid: a ZZZ UID; leave it out to use the one you saved
         agent: a showcase number or name, to go straight to its build card
         -c : pick agents for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
+        -2x : draw the cards at twice the resolution, for a sharper image
         -hide : hide the UID on the cards
         -set <uid> : save your ZZZ UID
         -unset : forget your saved ZZZ UID

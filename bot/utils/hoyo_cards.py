@@ -16,6 +16,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 
 import aiohttp
@@ -143,10 +144,80 @@ async def ensure_fonts(*texts: str):
 _fonts = {}
 
 
+# Cards are laid out in 1× units and drawn at the render's scale (-2x draws
+# twice the pixels). Renders run in a thread pool, so the scale is per thread.
+_render = threading.local()
+
+
+def S() -> int:
+    """The current render's scale"""
+    return getattr(_render, "scale", 1)
+
+
+def px(value: float) -> int:
+    """A 1× length in the current render's pixels"""
+    return int(round(value * S()))
+
+
+class ScaledDraw:
+    """ImageDraw that takes 1× coordinates and draws at the render's scale"""
+
+    def __init__(self, draw: ImageDraw.ImageDraw):
+        self._draw = draw
+
+    @staticmethod
+    def _xy(points):
+        return (
+            [v * S() for v in points]
+            if not isinstance(points[0], (tuple, list))
+            else [(x * S(), y * S()) for x, y in points]
+        )
+
+    def text(self, xy, text, stroke_width=0, **kwargs):
+        self._draw.text(
+            (xy[0] * S(), xy[1] * S()), text, stroke_width=px(stroke_width), **kwargs
+        )
+
+    def ellipse(self, box, width=1, **kwargs):
+        self._draw.ellipse(self._xy(box), width=px(width), **kwargs)
+
+    def rounded_rectangle(self, box, radius=0, width=1, **kwargs):
+        self._draw.rounded_rectangle(
+            self._xy(box), px(radius), width=px(width), **kwargs
+        )
+
+    def line(self, xy, width=1, **kwargs):
+        self._draw.line(self._xy(xy), width=px(width), **kwargs)
+
+    def polygon(self, points, **kwargs):
+        self._draw.polygon(self._xy(points), **kwargs)
+
+
+def scaled(draw_card):
+    """Runs a card drawer at the scale given as its scale keyword"""
+
+    def run(*args, scale: int = 1):
+        _render.scale = scale
+        try:
+            return draw_card(*args)
+        finally:
+            _render.scale = 1
+
+    return run
+
+
+def new_card(size: tuple, colour) -> tuple[Image.Image, ScaledDraw]:
+    """A blank card of 1× size at the render's scale, and its drawing"""
+    card = Image.new("RGB", (px(size[0]), px(size[1])), colour)
+    return card, ScaledDraw(ImageDraw.Draw(card, "RGBA"))
+
+
 def font(size: int, bold: bool = False, text: str = "") -> ImageFont.FreeTypeFont:
+    """A font of 1× size, loaded at the render's scale"""
     script = _script(text)
     if script not in _font_paths:
         script = "latin"
+    size = px(size)
     key = (script, size, bold)
     if key not in _fonts:
         face = ImageFont.truetype(_font_paths[script], size)
@@ -168,7 +239,8 @@ def font(size: int, bold: bool = False, text: str = "") -> ImageFont.FreeTypeFon
 
 
 def text_width(text: str, face) -> float:
-    return face.getlength(text)
+    """text's width in 1× units"""
+    return face.getlength(text) / S()
 
 
 def fit_font(text: str, size: int, width: int, bold: bool = False):
@@ -182,12 +254,12 @@ def fit_font(text: str, size: int, width: int, bold: bool = False):
 
 
 def put(card: Image.Image, image: Image.Image, pos: tuple = (0, 0)):
-    """An RGBA image over the (RGB) card, blended by its alpha"""
-    card.paste(image, (int(pos[0]), int(pos[1])), image)
+    """An RGBA image (already at the render's scale) over the card at 1× pos"""
+    card.paste(image, (px(pos[0]), px(pos[1])), image)
 
 
 def panel(card: Image.Image, box: tuple, radius: int = 18, fill=PANEL):
-    ImageDraw.Draw(card, "RGBA").rounded_rectangle(box, radius, fill=fill)
+    ScaledDraw(ImageDraw.Draw(card, "RGBA")).rounded_rectangle(box, radius, fill=fill)
 
 
 def paste_fit(
@@ -196,7 +268,7 @@ def paste_fit(
     """image scaled to fit box, centred; optionally cut to a circle"""
     if image is None:
         return
-    x0, y0, x1, y1 = box
+    x0, y0, x1, y1 = (px(v) for v in box)
     image = image.copy()
     image.thumbnail((x1 - x0, y1 - y0), Image.Resampling.LANCZOS)
     x = x0 + (x1 - x0 - image.width) // 2
@@ -207,7 +279,7 @@ def paste_fit(
             (0, 0, image.width - 1, image.height - 1), fill=255
         )
         image.putalpha(Image.composite(image.getchannel("A"), mask, mask))
-    put(card, image, (x, y))
+    card.paste(image, (x, y), image)
 
 
 def star(draw: ImageDraw.ImageDraw, x: float, y: float, r: float, fill=GOLD):
@@ -238,15 +310,15 @@ def stars(draw, x: float, y: float, count: int, r: float = 10, fill=GOLD):
 def gradient(
     size: tuple, start: tuple, end: tuple, horizontal: bool = False
 ) -> Image.Image:
-    """An RGBA gradient from start to end colour"""
-    w, h = size
+    """An RGBA gradient from start to end colour, of 1× size"""
+    w, h = px(size[0]), px(size[1])
     steps = w if horizontal else h
     line = Image.new("RGBA", (steps, 1) if horizontal else (1, steps))
     for i in range(steps):
         t = i / max(steps - 1, 1)
         colour = tuple(int(a + (b - a) * t) for a, b in zip(start, end))
         line.putpixel((i, 0) if horizontal else (0, i), colour)
-    return line.resize(size)
+    return line.resize((w, h))
 
 
 def to_jpeg(card: Image.Image) -> bytes:
@@ -317,17 +389,17 @@ def _background(card, art, colour):
     splash = art.get("splash")
     if splash is not None:
         splash = splash.copy()
-        scale = (H - 40) / splash.height
+        scale = px(H - 40) / splash.height
         splash = splash.resize(
-            (int(splash.width * scale), H - 40), Image.Resampling.LANCZOS
+            (int(splash.width * scale), px(H - 40)), Image.Resampling.LANCZOS
         )
-        if splash.width > SPLASH_W + 300:
-            left = (splash.width - SPLASH_W - 300) // 2
-            splash = splash.crop((left, 0, left + SPLASH_W + 300, splash.height))
+        if splash.width > px(SPLASH_W + 300):
+            left = (splash.width - px(SPLASH_W + 300)) // 2
+            splash = splash.crop((left, 0, left + px(SPLASH_W + 300), splash.height))
         shadow = Image.new("RGBA", splash.size, (0, 0, 0, 0))
         shadow.putalpha(splash.getchannel("A").point(lambda a: a * 0.45))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(18))
-        x = (SPLASH_W - splash.width) // 2 + 60
+        shadow = shadow.filter(ImageFilter.GaussianBlur(px(18)))
+        x = (SPLASH_W - splash.width / S()) // 2 + 60
         put(card, shadow, (x + 14, 34))
         put(card, splash, (x, 20))
     put(card, gradient((W, 260), (0, 0, 0, 0), (0, 0, 0, 170)), (0, H - 260))
@@ -362,7 +434,7 @@ def _circle_item(card, draw, box, item, colour, art):
         tw = text_width(label, face)
         fill = WHITE if on else FAINT
         draw.text(
-            ((x0 + x1 - tw) / 2, (y0 + y1) / 2 - face.size * 0.62),
+            ((x0 + x1 - tw) / 2, (y0 + y1) / 2 - face.size / S() * 0.62),
             label,
             font=face,
             fill=fill,
@@ -511,10 +583,10 @@ def _draw_rank(card, draw, board: dict, art: dict, colour: tuple):
     draw.text((rx + text_width(rank, rface), cy + 6), out, font=oface, fill=FAINT)
 
 
+@scaled
 def _draw_build(spec: dict, art: dict) -> bytes:
     colour = spec["colour"]
-    card = Image.new("RGB", (W, H), colour)
-    draw = ImageDraw.Draw(card, "RGBA")
+    card, draw = new_card((W, H), colour)
     _background(card, art, colour)
 
     # Stats, top left
@@ -1232,8 +1304,13 @@ async def interknot_ranks(uid) -> dict:
     return ranks
 
 
-async def build_card(game: str, character, owner: str, uid=None) -> bytes:
-    """The build card for a showcase character of game (gi, hsr or zzz)"""
+async def build_card(
+    game: str, character, owner: str, uid=None, scale: int = 1
+) -> bytes:
+    """
+    The build card for a showcase character of game (gi, hsr or zzz), drawn
+    at scale times 1500×1180
+    """
     if game == "gi":
         urls, spec = gi_build(character, owner)
         board = (await akasha_ranks(uid)).get(character.id) if uid else None
@@ -1259,7 +1336,7 @@ async def build_card(game: str, character, owner: str, uid=None) -> bytes:
     art = await fetch_images(urls)
     if art.get("splash") is None:
         art["splash"] = art.get("splash_fallback")
-    return await sync_to_async(_draw_build, spec, art)
+    return await sync_to_async(_draw_build, spec, art, scale=scale)
 
 
 # ------------------------------------------------------------- profile card
@@ -1298,24 +1375,24 @@ def _tile(card, draw, box, tile: dict, art):
         draw.text((tx, y0 + 94), tile["extra"], font=font(22), fill=SOFT)
 
 
+@scaled
 def _draw_profile(spec: dict, art: dict) -> bytes:
     characters = spec["characters"]
     rows = -(-len(characters) // 4)
     height = 640 + rows * 170 + (30 if rows else 0)
-    card = Image.new("RGB", (PW, height), (24, 26, 36))
-    draw = ImageDraw.Draw(card, "RGBA")
+    card, draw = new_card((PW, height), (24, 26, 36))
 
     banner = art.get("banner")
     if banner is not None:
         # Fill the header; very wide namecards (ZZZ's) are cropped to the
         # middle
-        scale = max(PW / banner.width, 420 / banner.height)
+        scale = max(px(PW) / banner.width, px(420) / banner.height)
         banner = banner.resize(
             (int(banner.width * scale), int(banner.height * scale)),
             Image.Resampling.LANCZOS,
         )
-        left = (banner.width - PW) // 2
-        put(card, banner.crop((left, 0, left + PW, 420)))
+        left = (banner.width - px(PW)) // 2
+        put(card, banner.crop((left, 0, left + px(PW), px(420))))
     elif spec.get("banner_colour"):
         put(
             card,
@@ -1551,8 +1628,10 @@ def _zzz_profile(player, agents, uid_text, medal_icons: dict) -> tuple[dict, dic
     return urls, spec
 
 
-async def profile_card(game: str, player, characters: list, uid_text: str) -> bytes:
-    """A player's summary card with their showcase characters"""
+async def profile_card(
+    game: str, player, characters: list, uid_text: str, scale: int = 1
+) -> bytes:
+    """A player's summary card with their showcase characters, at scale"""
     if game == "gi":
         urls, spec = _gi_profile(player, characters, uid_text)
     elif game == "hsr":
@@ -1567,4 +1646,4 @@ async def profile_card(game: str, player, characters: list, uid_text: str) -> by
         *(c["name"] for c in spec["characters"]),
     )
     art = await fetch_images(urls)
-    return await sync_to_async(_draw_profile, spec, art)
+    return await sync_to_async(_draw_profile, spec, art, scale=scale)
