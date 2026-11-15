@@ -1,7 +1,8 @@
 """
 Lookups for manga and light novels (AniList), films and TV series
-(Cinemeta, Stremio's open metadata API, with IMDb ids and ratings) and web
-novels (MangaUpdates' open API). None of them needs an API key.
+(Cinemeta, Stremio's open metadata API, with IMDb ids and ratings), web
+novels (MangaUpdates' open API) and Wattpad stories (Wattpad's public API).
+None of them needs an API key.
 """
 
 import html
@@ -15,7 +16,12 @@ from bot import bot
 ANILIST = "https://graphql.anilist.co"
 CINEMETA = "https://v3-cinemeta.strem.io"
 MANGAUPDATES = "https://api.mangaupdates.com/v1"
-HEADERS = {"User-Agent": "neon_bot/1.0"}
+WATTPAD = "https://www.wattpad.com/api/v3"
+HEADERS = {"User-Agent": "neon_bot/1.0 (+https://github.com/Pah-0/neon_bot)"}
+WATTPAD_FIELDS = (
+    "id,title,user(name),readCount,voteCount,numParts,completed,tags,cover,"
+    "description,mature,url,language(name),lastPublishedPart(createDate)"
+)
 # AniList formats for .manga and .manga -ln
 MANGA_FORMATS = ["MANGA", "ONE_SHOT"]
 NOVEL_FORMATS = ["NOVEL"]
@@ -269,3 +275,44 @@ async def novel_info(series_id: str) -> tuple[str | None, str]:
     lines.append(f"\n{series['url']}")
     image = (series.get("image") or {}).get("url", {}).get("original")
     return image, "\n".join(lines)
+
+
+async def search_wattpad(query: str) -> list[tuple[str, str]]:
+    """(Wattpad story id, label) for each story"""
+    result = await get_json(
+        f"{WATTPAD}/stories",
+        params={
+            "query": query,
+            "limit": MAX_RESULTS,
+            "fields": "stories(id,title,user(name))",
+        },
+    )
+    return [
+        (str(story["id"]), f"{story['title']} by {story['user']['name']}")
+        for story in result.get("stories", [])[:MAX_RESULTS]
+    ]
+
+
+async def wattpad_info(story_id: str) -> tuple[str | None, str]:
+    """(cover URL, caption) for a Wattpad story"""
+    story = await get_json(
+        f"{WATTPAD}/stories/{story_id}", params={"fields": WATTPAD_FIELDS}
+    )
+    lines = [f"*{story['title']}*", f"_by {story['user']['name']}_", ""]
+    lines.append(f"➤ *COMPLETED:* {'Yes' if story.get('completed') else 'No'}")
+    lines.append(f"➤ *PARTS:* {story.get('numParts', '?')}")
+    lines.append(
+        f"➤ *READS | VOTES:* {story.get('readCount', 0):,} | "
+        f"{story.get('voteCount', 0):,}"
+    )
+    if language := (story.get("language") or {}).get("name"):
+        lines.append(f"➤ *LANGUAGE:* {language}")
+    if updated := (story.get("lastPublishedPart") or {}).get("createDate"):
+        lines.append(f"➤ *LAST UPDATED:* {updated[:10]}")
+    lines.append(f"➤ *MATURE:* {'Yes' if story.get('mature') else 'No'}")
+    if tags := story.get("tags"):
+        lines.append(f"➤ *TAGS:* {', '.join(tags[:12])}")
+    if synopsis := plain(story.get("description")):
+        lines.append(f"\n{synopsis}")
+    lines.append(f"\n{story['url']}")
+    return story.get("cover"), "\n".join(lines)

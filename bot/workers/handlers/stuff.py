@@ -76,7 +76,7 @@ async def game_cmds(event, args, client):
 async def lookup_cmds(event, args, client):
     """
     List the commands for looking up anime, manga, light and web novels,
-    films and TV series.
+    Wattpad stories, films and TV series.
 
     Arguments: None
     """
@@ -91,7 +91,7 @@ async def lookup_cmds(event, args, client):
         msg = f"""{pre}anime - *Fetch anime info from anilist*
 {pre}airing - *Fetch anime airing info from anilist*
 {pre}manga - *Fetch manga info from AniList (-ln for light novels)*
-{pre}novel - *Fetch web and light novel info from MangaUpdates*
+{pre}novel - *Fetch web and light novel info from MangaUpdates (-wp for Wattpad stories)*
 {pre}imdb - *Fetch film and TV series info with IMDb ratings (-movie or -tv to narrow it)*"""
         await event.reply(msg)
     except Exception as e:

@@ -9,7 +9,9 @@ from bot.utils.lookup_utils import (
     search_manga,
     search_novels,
     search_titles,
+    search_wattpad,
     title_info,
+    wattpad_info,
 )
 from bot.utils.msg_utils import (
     chat_is_allowed,
@@ -163,13 +165,20 @@ async def imdb(event, args, client):
 async def novel(event, args, client):
     """
     Looks up a web or light novel (Chinese, Korean, Japanese and more) on
-    MangaUpdates. If a title matches several, a poll is sent to pick one.
+    MangaUpdates, or a Wattpad story with -wp. If a title matches several, a
+    poll is sent to pick one.
 
-    Usage: novel <title>
+    Usage: novel <title> [-wp]
+        -wp : look up Wattpad stories instead
     """
     if not await allowed(event):
         return
-    query = (args or "").strip()
+    flags, query = get_args(
+        ["-wp", "store_true"], to_parse=args or "", get_unknown=True
+    )
+    query = query.strip()
     if not query:
         return await event.reply(getdoc(novel))
+    if flags.wp:
+        return await look_up(event, query, "story", search_wattpad, wattpad_info)
     await look_up(event, query, "novel", search_novels, novel_info)
