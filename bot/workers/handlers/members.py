@@ -1,6 +1,6 @@
 from inspect import getdoc
 
-from neonize.utils.enum import ParticipantChange
+from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 
 from bot import bot, jid
 from bot.utils.db_utils import save2db2
@@ -172,8 +172,9 @@ async def kick_or_ban(event: Event, client, group_info, ids: list, ban: bool):
 
 async def gban(event: Event, args, client):
     """
-    [Owner | Sudo | Admin] Ban members from this group: they're removed, and
-    removed again whenever they rejoin, until gunban. Group only; the bot must
+    [Owner | Sudo | Admin] Ban members from this group: they're removed,
+    removed again whenever they rejoin, and their requests to join are
+    declined, until gunban. Group only; the bot must
     be a group admin. Someone who isn't in the group yet can be banned by
     number. With no arguments, lists the banned.
 
@@ -307,3 +308,21 @@ async def keep_out_banned(gc_msg) -> set:
         await logger(Exception)
         return set()
     return {j.User for j in joined}
+
+
+async def decline_banned_request(gc_msg):
+    """Rejects a group-banned user's request to join (the event's Sender)"""
+    banned = bot.group_dict.get(gc_msg.JID.User, {}).get("gbanned")
+    requester = gc_msg.Sender
+    if not banned or not (await other_ids(requester.User)) & banned:
+        return
+    # Needs neonize with update_group_request_participants; until then a
+    # banned user whose request is approved is removed on joining
+    if not hasattr(bot.client, "update_group_request_participants"):
+        return
+    try:
+        await bot.client.update_group_request_participants(
+            gc_msg.JID, [requester], ParticipantRequestChange.REJECT
+        )
+    except Exception:
+        await logger(Exception)
