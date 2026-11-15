@@ -414,7 +414,10 @@ async def search_ao3(query: str) -> list[tuple[str, str]]:
         except (AttributeError, KeyError, TypeError, IndexError):
             continue
         _ao3_works[work["id"]] = work
-        results.append((work["id"], f"{work['title']} by {', '.join(work['authors'])}"))
+        results.append((work["id"], f"{
+                work['title']} by {
+                ', '.join(
+                    work['authors'])}"))
     return results
 
 
