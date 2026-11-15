@@ -46,8 +46,9 @@ async def auto_rank():
             if period not in ("weekly", "monthly"):
                 period = ranking["period"] = "weekly"
 
-            # Monthly groups only send during weekly window
-            if period == "monthly" and not weekly_window:
+            # Every group gets its card on Sundays (the weekly window) only;
+            # monthly groups see the standings each week until their reset
+            if not weekly_window:
                 continue
 
             reset = (period == "weekly" and weekly_window) or (
