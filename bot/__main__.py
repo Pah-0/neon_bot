@@ -58,6 +58,7 @@ from .workers.handlers.manage import (
 )
 from .workers.handlers.media_dl import youtube_reply
 from .workers.handlers.objection import insession, render_objection
+from .workers.handlers.quote import quote
 from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
 from .workers.handlers.role import roles
 from .workers.handlers.stuff import gc_info, getcmds, hello, up
@@ -234,6 +235,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("gicodes")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, gift_codes, client)
+
+
+@bot.register("quote")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, quote, client)
 
 
 @bot.register("farm")
