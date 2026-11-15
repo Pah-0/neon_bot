@@ -118,14 +118,15 @@ async def send_ranking(group, period, mentions_are_lids, final=False):
         data = await get_ranking_data(group)
         if not data:
             return
-        tags = "  ".join(f"{r['place']}. @{r['user']}" for r in data["rows"])
+        # One person per line, as the text leaderboard had them
+        tags = "\n".join(f"{r['place']}. @{r['user']}" for r in data["rows"])
         if final:
             data["final"] = "week ended" if period == "weekly" else "month ended"
             since = bot.group_dict.get(group, {}).get("msg_ranking", {}).get("since")
             data["period"] = period_dates(since, period, datetime.date.today())
-            caption = f"{notice}\n{tags}"
+            caption = f"{notice}\n\n{tags}"
         else:
-            caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
+            caption = f"📈 *{period.capitalize()} message leaderboard*\n\n{tags}"
         await bot.client.send_image(
             chat, await ranking_card(data), caption, mentions_are_lids=mentions_are_lids
         )

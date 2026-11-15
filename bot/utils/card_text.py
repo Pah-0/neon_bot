@@ -13,7 +13,7 @@ from PIL import Image
 
 from bot.config import bot
 
-from .hoyo_cards import fetch_image, font, text_width
+from .hoyo_cards import fetch_image, font, font_runs, text_width
 
 TWEMOJI = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/{}.png"
 # An emoji relative to its font's size
@@ -68,7 +68,9 @@ def rich_width(text: str, size: int, bold: bool, emojis: dict) -> float:
         if kind == "emoji" and part in emojis:
             width += size * EMOJI_SCALE + 2
         else:
-            width += text_width(part, font(size, bold, part))
+            # Each character in the font that has it (symbols, fancy letters…)
+            for name, run in font_runs(part):
+                width += text_width(run, font(size, bold, name=name))
     return width
 
 
@@ -117,9 +119,10 @@ def draw_rich(card, draw, xy, text: str, size: int, bold: bool, fill, emojis: di
             )
             x += side + 2
         else:
-            face = font(size, bold, part)
-            draw.text((x, y), part, font=face, fill=fill)
-            x += text_width(part, face)
+            for name, run in font_runs(part):
+                face = font(size, bold, name=name)
+                draw.text((x, y), run, font=face, fill=fill)
+                x += text_width(run, face)
     return x
 
 

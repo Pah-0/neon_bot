@@ -18,6 +18,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 
 import aiohttp
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -28,10 +29,35 @@ CACHE_DIR = os.path.join(".cache", "hoyo")
 FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/"
 FONTS = {
     "latin": "notosans/NotoSans%5Bwdth,wght%5D.ttf",
-    # Only fetched when a nickname or signature needs them
+    # The rest are fetched only when some text has a character they cover
     "sc": "notosanssc/NotoSansSC%5Bwght%5D.ttf",
     "kr": "notosanskr/NotoSansKR%5Bwght%5D.ttf",
+    "symbols": "notosanssymbols/NotoSansSymbols%5Bwght%5D.ttf",
+    "symbols2": "notosanssymbols2/NotoSansSymbols2-Regular.ttf",
+    "math": "notosansmath/NotoSansMath-Regular.ttf",
+    "arabic": "notosansarabic/NotoSansArabic%5Bwdth,wght%5D.ttf",
+    "hebrew": "notosanshebrew/NotoSansHebrew%5Bwdth,wght%5D.ttf",
+    "thai": "notosansthai/NotoSansThai%5Bwdth,wght%5D.ttf",
+    "devanagari": "notosansdevanagari/NotoSansDevanagari%5Bwdth,wght%5D.ttf",
+    "javanese": "notosansjavanese/NotoSansJavanese%5Bwght%5D.ttf",
 }
+# Which fallback fonts to try for a character outside Noto Sans, by block
+_SCRIPT_FONTS = (
+    (r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]", ("kr",)),
+    (r"[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]", ("sc",)),
+    (
+        r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]",
+        ("arabic",),
+    ),
+    (r"[\u0590-\u05ff]", ("hebrew",)),
+    (r"[\u0e00-\u0e7f]", ("thai",)),
+    (r"[\u0900-\u097f]", ("devanagari",)),
+    # Javanese ornaments (꧁ ꧂) people put around names
+    (r"[\ua980-\ua9df]", ("javanese",)),
+    # Fancy letters (𝓐, 𝕭…) people use in names
+    (r"[\U0001d400-\U0001d7ff]", ("math",)),
+)
+_OTHER_FONTS = ("symbols", "symbols2", "math", "sc")
 ENKA_UI = "https://enka.network/ui/"
 # Genshin's friendship (fetter) icon; neither Enka nor Amber hosts it
 FRIENDSHIP_ICON = (
@@ -123,28 +149,84 @@ async def fetch_images(urls: dict) -> dict:
     return dict(zip(keys, images))
 
 
-def _script(text: str) -> str:
-    """Which font a text needs: latin, sc (Chinese, Japanese) or kr"""
-    if re.search(r"[ᄀ-ᇿ㄰-㆏가-힯]", text):
-        return "kr"
-    if re.search(r"[⺀-鿿豈-﫿＀-￯]", text):
-        return "sc"
-    return "latin"
+_coverage = {}  # font name -> the code points it has glyphs for
+_missing = set()  # characters no font covers, so they aren't looked up again
+
+
+def _load_coverage(name: str):
+    from fontTools.ttLib import TTFont
+
+    try:
+        _coverage[name] = set(TTFont(_font_paths[name], lazy=True).getBestCmap())
+    except Exception:
+        _coverage[name] = set()
+
+
+def _candidates(char: str) -> tuple:
+    for pattern, names in _SCRIPT_FONTS:
+        if re.match(pattern, char):
+            return names
+    return _OTHER_FONTS
+
+
+async def _get_font(name: str) -> bool:
+    if name in _font_paths:
+        return True
+    data = await _fetch(FONT_URL + FONTS[name])
+    if not data:
+        return False
+    _font_paths[name] = os.path.join(
+        CACHE_DIR, hashlib.sha1((FONT_URL + FONTS[name]).encode()).hexdigest()
+    )
+    await sync_to_async(_load_coverage, name)
+    return True
 
 
 async def ensure_fonts(*texts: str):
-    """Downloads the fonts these texts need, once"""
-    needed = {"latin"} | {_script(t) for t in texts if t}
+    """
+    Downloads the fonts these texts need, once: Noto Sans, and for characters
+    it lacks, the first fallback that has them
+    """
     async with _font_lock:
-        for name in needed - set(_font_paths):
-            data = await _fetch(FONT_URL + FONTS[name])
-            if not data:
-                if name == "latin":
-                    raise RuntimeError("Couldn't download the card font")
+        if not await _get_font("latin"):
+            raise RuntimeError("Couldn't download the card font")
+        for char in {c for t in texts if t for c in t}:
+            code = ord(char)
+            if code in _coverage["latin"] or char in _missing or code < 0x20:
                 continue
-            _font_paths[name] = os.path.join(
-                CACHE_DIR, hashlib.sha1((FONT_URL + FONTS[name]).encode()).hexdigest()
-            )
+            for name in _candidates(char):
+                if await _get_font(name) and code in _coverage.get(name, ()):
+                    break
+            else:
+                _missing.add(char)
+
+
+def font_name(char: str) -> str:
+    """The loaded font that has char: Noto Sans first, then the fallbacks"""
+    code = ord(char)
+    if code in _coverage.get("latin", ()):
+        return "latin"
+    for name in _candidates(char):
+        if code in _coverage.get(name, ()):
+            return name
+    return "latin"
+
+
+def font_runs(text: str) -> list[tuple[str, str]]:
+    """text split into (font name, run) by which font has each character"""
+    runs = []
+    for char in text:
+        # Combining marks stay with the character they modify
+        name = (
+            runs[-1][0]
+            if runs and unicodedata.category(char).startswith("M")
+            else font_name(char)
+        )
+        if runs and runs[-1][0] == name:
+            runs[-1] = (name, runs[-1][1] + char)
+        else:
+            runs.append((name, char))
+    return runs
 
 
 _fonts = {}
@@ -218,11 +300,20 @@ def new_card(size: tuple, colour) -> tuple[Image.Image, ScaledDraw]:
     return card, ScaledDraw(ImageDraw.Draw(card, "RGBA"))
 
 
-def font(size: int, bold: bool = False, text: str = "") -> ImageFont.FreeTypeFont:
-    """A font of 1× size, loaded at the render's scale"""
-    script = _script(text)
-    if script not in _font_paths:
-        script = "latin"
+def font(
+    size: int, bold: bool = False, text: str = "", name: str | None = None
+) -> ImageFont.FreeTypeFont:
+    """
+    A font of 1× size, loaded at the render's scale: name, or the one that
+    covers most of text (draw_rich in card_text mixes fonts per character)
+    """
+    if name is None:
+        counts = {}
+        for run_name, run in font_runs(text):
+            counts[run_name] = counts.get(run_name, 0) + len(run)
+        others = {k: v for k, v in counts.items() if k != "latin"}
+        name = max(others, key=others.get) if others else "latin"
+    script = name if name in _font_paths else "latin"
     size = px(size)
     key = (script, size, bold)
     if key not in _fonts:
