@@ -48,6 +48,8 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 - **Reminders**: Get tagged on a replied message at a specified time.
 - **RSS Feeds**: Subscribe to RSS feeds and receive updates in your chats.
 - **Genshin Codes**: Get the current Genshin Impact redeem codes, and have new ones posted to chats automatically.
+- **Genshin Farm Schedule**: See which domains are open each day and the characters and weapons they cover (data from Project Amber), optionally posted daily.
+- **Hoyo Search**: Look up characters, weapons and sets from Genshin Impact, Honkai: Star Rail and Zenless Zone Zero (data from Project Amber, Project Yatta and Hakushin).
 - **Hoyo Profiles**: Genshin, Star Rail and ZZZ player profile cards and character build cards (stats, weapon, artifacts/relics/discs with crit value), from Enka.Network.
 - **URL Sanitization**: Strip tracking parameters from links.
 - **Auto Translation**: Messages that aren't in a chat's set language get a translated reply, kept up to date when the message is edited (language detected locally with py3langid, translated with Google Translate).
@@ -66,6 +68,8 @@ The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds`, `.t
 - `.gc_info`: Get the group chat's owner.
 - `.afk [reason]`: Mark yourself as AFK.
 - `.gicodes [-add/-rm <chat> | -get]`: Get the current Genshin Impact redeem codes; owner and sudo pick chats where new codes are posted automatically.
+- `.farm [day] [city] [asia|eu|na]`: See which Genshin talent and weapon domains are open today (or on a given day) and who they're for; `-add <chat> [region]` posts it to a chat at each daily reset.
+- `.search <name> [-gi|-hsr|-zzz] [-char|-weapon|-set] [-t] [-c]`: Look up a Genshin Impact, Honkai: Star Rail or Zenless Zone Zero character, weapon or set; `-t` adds talents/traces/skills and `-c` constellations/eidolons/mindscapes.
 - `.gi`, `.hsr`, `.zzz` `[uid] [character] [-h]`: A player's profile card (Genshin: Spiral Abyss, Imaginarium Theater and Stygian Onslaught; Star Rail: Trailblaze and Equilibrium levels and collection; ZZZ: Shiyu Defense, Deadly Assault and Battle Tower medals) with their showcase, then a build card for the character picked from the poll or named after the UID; `-set <uid>` saves your UID for that game, `-h` hides it on the cards.
 
 ### Media & Tools
