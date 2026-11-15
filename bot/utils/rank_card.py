@@ -32,6 +32,8 @@ NAME_W = 540
 MAX_ROWS = 30
 BACKGROUND = (24, 26, 36)
 ACCENT = (118, 96, 220)
+# The card sent when a ranking resets: the period's final standings
+FINAL_ACCENT = (196, 146, 40)
 PLACE_COLOURS = {1: (214, 170, 60), 2: (168, 176, 190), 3: (196, 124, 72)}
 
 
@@ -81,12 +83,21 @@ def _draw_ranking(data: dict, avatars: dict, emojis: dict) -> bytes:
     draw = ImageDraw.Draw(card, "RGBA")
 
     # Header: title, group and period, totals
+    final = data.get("final")
+    accent = FINAL_ACCENT if final else ACCENT
     put(
         card,
-        gradient((CW, HEADER_H), ACCENT + (255,), BACKGROUND + (255,), horizontal=True),
+        gradient((CW, HEADER_H), accent + (255,), BACKGROUND + (255,), horizontal=True),
     )
     put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (255,)))
-    draw.text((40, 34), "Message Leaderboard", font=font(46, True), fill=WHITE)
+    title = "Final Standings" if final else "Message Leaderboard"
+    draw.text((40, 34), title, font=font(46, True), fill=WHITE)
+    if final:
+        label = final.upper()
+        face = font(20, True)
+        lw = text_width(label, face) + 32
+        panel(card, (CW - 40 - lw, 44, CW - 40, 80), radius=18, fill=accent + (255,))
+        draw.text((CW - 40 - lw + 16, 49), label, font=face, fill=(20, 20, 30, 255))
     subtitle = " · ".join(p for p in (data.get("group"), data.get("period")) if p)
     if subtitle:
         subtitle = fit_rich(subtitle, 26, False, CW - 84, emojis)

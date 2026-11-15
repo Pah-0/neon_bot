@@ -50,15 +50,19 @@ async def auto_rank():
             if period == "monthly" and not weekly_window:
                 continue
 
+            reset = (period == "weekly" and weekly_window) or (
+                period == "monthly" and monthly_window
+            )
             server = ranking.get("server")
-            await send_ranking(group, period, mentions_are_lids=(server == 0))
+            # On reset, the final standings, captioned with the reset notice
+            await send_ranking(
+                group, period, mentions_are_lids=(server == 0), final=reset
+            )
 
             await asyncio.sleep(3)
 
             # ---------- RESET LOGIC ----------
-            if period == "weekly" and not weekly_window:
-                continue
-            if period == "monthly" and not monthly_window:
+            if not reset:
                 continue
 
             saved_config = {
@@ -68,13 +72,6 @@ async def auto_rank():
             update_users_rank(group)
             ranking.clear()
             ranking.update(saved_config)
-
-            await bot.client.send_message(
-                jid.build_jid(group, "g.us"),
-                f"*{period.capitalize()} message ranking has been reset.*",
-            )
-
-            await asyncio.sleep(3)
 
         except Exception:
             await logger(
@@ -107,15 +104,24 @@ async def save_msg_ranking():
         await logger(Exception)
 
 
-async def send_ranking(group, period, mentions_are_lids):
-    """The leaderboard card, captioned with the top ten tagged; text if drawing fails"""
+async def send_ranking(group, period, mentions_are_lids, final=False):
+    """
+    The leaderboard card, captioned with the top ten tagged; on reset (final)
+    the final-standings card, captioned with the reset notice. Text if
+    drawing fails.
+    """
     chat = jid.build_jid(group, "g.us")
+    notice = f"*{period.capitalize()} message ranking has been reset.*"
     try:
         data = await get_ranking_data(group)
         if not data:
             return
         tags = "  ".join(f"{r['place']}. @{r['user']}" for r in data["rows"])
-        caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
+        if final:
+            data["final"] = "week ended" if period == "weekly" else "month ended"
+            caption = f"{notice}\n{tags}"
+        else:
+            caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
         await bot.client.send_image(
             chat, await ranking_card(data), caption, mentions_are_lids=mentions_are_lids
         )
@@ -126,6 +132,8 @@ async def send_ranking(group, period, mentions_are_lids):
             await bot.client.send_message(
                 chat, msg, mentions_are_lids=mentions_are_lids
             )
+        if final:
+            await bot.client.send_message(chat, notice)
 
 
 def update_users_rank(chat_id):

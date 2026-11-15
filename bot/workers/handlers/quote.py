@@ -13,6 +13,7 @@ from bot.utils.msg_utils import (
     user_is_privileged,
 )
 from bot.utils.quote_card import quote_card
+from bot.workers.handlers.wa import get_member_label
 
 
 async def quote(event, args, client):
@@ -107,7 +108,9 @@ async def make_quote(event, replied) -> tuple[bytes, str]:
             "user": answered.from_user.id,
             "name": await sender_name(answered.from_user),
             "text": preview_text(answered),
+            "tag": get_member_label(event.chat.id, answered.from_user),
         }
     name = await sender_name(sender)
-    png = await quote_card(sender.id, sender.jid, name, text, media, reply)
+    tag = get_member_label(event.chat.id, sender)
+    png = await quote_card(sender.id, sender.jid, name, text, media, reply, tag)
     return png, name
