@@ -70,7 +70,7 @@ The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds`, `.t
 - `.gicodes [-add/-rm <chat> | -get]`: Get the current Genshin Impact redeem codes; owner and sudo pick chats where new codes are posted automatically.
 - `.farm [day] [city] [asia|eu|na]`: See which Genshin talent and weapon domains are open today (or on a given day) and who they're for; `-add <chat> [region]` posts it to a chat at each daily reset.
 - `.search <name> [-gi|-hsr|-zzz] [-char|-weapon|-set] [-t] [-c]`: Look up a Genshin Impact, Honkai: Star Rail or Zenless Zone Zero character, weapon or set; `-t` adds talents/traces/skills and `-c` constellations/eidolons/mindscapes.
-- `.gi`, `.hsr`, `.zzz` `[uid] [character] [-h]`: A player's profile card (Genshin: Spiral Abyss, Imaginarium Theater and Stygian Onslaught; Star Rail: Trailblaze and Equilibrium levels and collection; ZZZ: Shiyu Defense, Deadly Assault and Battle Tower medals) with their showcase, then a build card for the character picked from the poll or named after the UID; `-set <uid>` saves your UID for that game, `-h` hides it on the cards.
+- `.gi`, `.hsr`, `.zzz` `[uid] [character] [-hide]`: A player's profile card (Genshin: Spiral Abyss, Imaginarium Theater and Stygian Onslaught; Star Rail: Trailblaze and Equilibrium levels and collection; ZZZ: Shiyu Defense, Deadly Assault and Battle Tower medals) with their showcase, then a build card for the character picked from the poll or named after the UID; `-set <uid>` saves your UID for that game, `-hide` hides it on the cards. Send `.gi -h` (or `.hsr -h`, `.zzz -h`) for the full help.
 
 ### Media & Tools
 - `.sticker`: Convert replied media to a sticker.

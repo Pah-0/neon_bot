@@ -1,6 +1,6 @@
 from inspect import getdoc
 
-from bot.config import bot, conf
+from bot.config import bot
 from bot.utils.bot_utils import list_to_str
 from bot.utils.db_utils import save2db2
 from bot.utils.farm_utils import (
@@ -164,7 +164,7 @@ async def manage_farm_chat(event, args, client):
                 )
             )
         if action not in ("-add", "-rm") or not chat or region not in REGIONS:
-            return await event.reply(getdoc(farm).format(pre=conf.CMD_PREFIX))
+            return await event.reply(getdoc(farm))
         if chat in (".", event.chat.id):
             chat = this_chat
         elif chat.casefold() == "default":
@@ -218,7 +218,7 @@ async def farm(event, args, client):
     Shows the Genshin Impact talent and weapon domains open today, and the
     characters and weapons (4★ and up) they're for. Data from Project Amber.
 
-    Usage: {pre}farm [day] [city] [region]
+    Usage: farm [day] [city] [region]
         day: monday…sunday (or mon…sun), today or tomorrow; defaults to today
         city: only show this city's domains, e.g. liyue
         region: asia, eu or na; sets when the day rolls over (04:00 server time)
@@ -245,8 +245,7 @@ async def farm(event, args, client):
             weekday, region, city = parse_farm_args(args, city_list(schedule))
         except ValueError as e:
             return await event.reply(
-                f"*Unknown day, city or region:* {e}\n\n"
-                + getdoc(farm).format(pre=conf.CMD_PREFIX)
+                f"*Unknown day, city or region:* {e}\n\n" + getdoc(farm)
             )
         await event.reply(get_farm_msg(schedule, weekday, region, city))
     except Exception:
