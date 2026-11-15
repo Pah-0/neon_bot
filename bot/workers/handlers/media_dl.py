@@ -76,7 +76,8 @@ async def folder_upload(
                 await asyncio.sleep(3)
                 continue
             if file_sz >= 100000000:
-                event = await event.reply_document(file, f"*{base_name}*")
+                # The file keeps its own name; the bold title is the caption
+                event = await event.reply_document(file, name, f"*{base_name}*")
             elif ext_ in (".png", ".jpg", ".jpeg", ".webp") and (
                 image or name_.startswith(path.split("/", maxsplit=2)[-1])
             ):
