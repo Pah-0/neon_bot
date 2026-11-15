@@ -173,7 +173,8 @@ async def manage_farm_chat(event, args, client):
             if chats.get(chat) == region:
                 return await event.reply("*Chat already added!*")
             chats[chat] = region
-            done = f"set to get the farm schedule at the {REGION_NAMES[region]} server's reset"
+            done = f"set to get the farm schedule at the {
+                REGION_NAMES[region]} server's reset"
         elif chat not in chats:
             return await event.reply("*Given chat was never added!*")
         else:
