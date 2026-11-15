@@ -11,7 +11,7 @@ import re
 import time
 
 import aiohttp
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 from .bot_utils import sync_to_async
 
@@ -517,6 +517,95 @@ def _compose(raws: list[bytes], rarity: int, width: int = 1280) -> bytes:
     return output.getvalue()
 
 
+# Character art goes on its element's colour, with a blurred copy of the art
+ELEMENT_COLOURS = {
+    "Fire": (176, 70, 48),
+    "Water": (44, 102, 176),
+    "Wind": (40, 140, 118),
+    "Electric": (118, 74, 172),
+    "Grass": (82, 136, 44),
+    "Ice": (72, 146, 178),
+    "Rock": (172, 128, 44),
+    "Physical": (110, 112, 124),
+    "Thunder": (118, 74, 172),
+    "Quantum": (82, 70, 160),
+    "Imaginary": (176, 146, 44),
+    "Ether": (178, 64, 120),
+}
+ICON, ICON_GAP = 92, 22
+
+
+def _compose_character(
+    splash: bytes, colour: tuple, icons: list, width: int = 1280
+) -> bytes:
+    """
+    Character art on a blurred, element-tinted backdrop, with a row of
+    constellation/eidolon icons under it when there are any
+    """
+    art = Image.open(io.BytesIO(splash)).convert("RGBA")
+    art.thumbnail((width, width), Image.Resampling.LANCZOS)
+    strip = ICON + 48 if icons else 0
+    size = (art.width, art.height + strip)
+
+    # Element gradient, then the art itself blurred over it for its colours
+    top = tuple(min(255, c + 40) for c in colour)
+    bottom = tuple(int(c * 0.35) for c in colour)
+    gradient = Image.new("RGBA", (1, size[1]))
+    for y in range(size[1]):
+        t = y / max(size[1] - 1, 1)
+        gradient.putpixel(
+            (0, y), tuple(int(a + (b - a) * t) for a, b in zip(top, bottom)) + (255,)
+        )
+    card = gradient.resize(size)
+    glow = art.resize((size[0], size[1]), Image.Resampling.BILINEAR)
+    glow = glow.filter(ImageFilter.GaussianBlur(max(size) // 18))
+    glow.putalpha(glow.getchannel("A").point(lambda a: a * 0.55))
+    card.alpha_composite(glow)
+    card.alpha_composite(art, (0, 0))
+
+    if icons:
+        images = [Image.open(io.BytesIO(r)).convert("RGBA") for r in icons]
+        total = len(images) * ICON + (len(images) - 1) * ICON_GAP
+        x = (size[0] - total) // 2
+        y = art.height + 18
+        # Circles drawn 4× larger and shrunk for smooth edges
+        ring = Image.new("RGBA", (ICON * 4, ICON * 4), (0, 0, 0, 0))
+        ImageDraw.Draw(ring).ellipse(
+            (0, 0, ICON * 4 - 1, ICON * 4 - 1),
+            fill=(0, 0, 0, 150),
+            outline=top + (255,),
+            width=16,
+        )
+        ring = ring.resize((ICON, ICON), Image.Resampling.LANCZOS)
+        for icon in images:
+            card.alpha_composite(ring, (x, y))
+            icon.thumbnail((ICON - 30, ICON - 30), Image.Resampling.LANCZOS)
+            card.alpha_composite(
+                icon, (x + (ICON - icon.width) // 2, y + (ICON - icon.height) // 2)
+            )
+            x += ICON + ICON_GAP
+
+    output = io.BytesIO()
+    card.convert("RGB").save(output, format="jpeg", quality=90)
+    return output.getvalue()
+
+
+async def character_image(session, urls: list[str], style: dict) -> bytes | None:
+    """The first splash URL that loads, styled with style's colour and icons"""
+    splash = None
+    for url in urls:
+        if splash := await download(session, url):
+            break
+    if not splash:
+        return None
+    icons = await asyncio.gather(
+        *(download(session, u) for u in style.get("icons", []))
+    )
+    icons = [i for i in icons if i]
+    colour = ELEMENT_COLOURS.get(style.get("element", ""), (90, 90, 110))
+    return await sync_to_async(_compose_character, splash, colour, icons)
+
+
 async def make_image(session, urls: list[str], rarity: int) -> bytes | None:
     """The first URL that loads (or every one, for multi-piece sets) composed"""
     if not urls:
@@ -606,6 +695,10 @@ async def _gi_character(session, entry) -> tuple:
         f"{GI_ASSETS}UI_Gacha_AvatarImg_{icon}.png",
         f"{GI_ASSETS}{data['icon']}.png",
     ]
+    entry["style"] = {
+        "element": data["element"],
+        "icons": [f"{GI_ASSETS}{c['icon']}.png" for c in consts if c.get("icon")],
+    }
     return urls, False, caption, sections
 
 
@@ -731,6 +824,12 @@ async def _hsr_character(session, entry) -> tuple:
         f"{HSR_ASSETS}avatar/large/{data['icon']}.png",
         f"{HSR_ASSETS}avatar/{data['icon']}.png",
     ]
+    entry["style"] = {
+        "element": types["combatType"]["id"],
+        "icons": [
+            f"{HSR_ASSETS}skill/{e['icon']}.png" for e in eidolons if e.get("icon")
+        ],
+    }
     return urls, False, caption, sections
 
 
@@ -867,6 +966,9 @@ async def _zzz_character(session, entry) -> tuple:
         f"{ZZZ_ASSETS}{data['icon']}.webp",
         f"{ZZZ_ASSETS}Mindscape_{entry['id']}_3.webp",
     ]
+    # Mindscapes have no icons, so agents get the backdrop alone
+    element = first(data.get("special_element_type")) or first(data.get("element_type"))
+    entry["style"] = {"element": element, "icons": []}
     return urls, False, caption, sections
 
 
@@ -949,7 +1051,9 @@ async def get_details(
         urls, multi, caption, sections = await BUILDERS[(entry["game"], entry["kind"])](
             session, entry
         )
-        if multi:
+        if entry.get("style"):
+            image = await character_image(session, urls, entry["style"])
+        elif multi:
             image = await make_image(session, urls, entry["rarity"])
         else:
             image = None
