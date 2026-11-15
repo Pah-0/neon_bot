@@ -423,12 +423,22 @@ def _draw_build(spec: dict, art: dict) -> bytes:
     board = spec.get("leaderboard")
     if board:
         top = board["rank"] / board["out"] * 100
-        share = f"{top:.1f}" if top < 10 else f"{top:.0f}"
+        if top < 0.01:
+            share = "<0.01"
+        elif top < 1:
+            share = f"{top:.2f}"
+        elif top < 10:
+            share = f"{top:.1f}"
+        else:
+            share = f"{top:.0f}"
         text = f"Top {share}%  ·  {board['rank']:,}/{board['out']:,}"
-        label = board["name"]
         right = 930 - bw - 12
         tface = font(26, True)
-        lface = fit_font(label, 22, 260)
+        lface = font(22)
+        # Long board names are cut, not shrunk past reading
+        label = board["name"]
+        while label and text_width(label, lface) > 280:
+            label = label[:-2].rstrip(" ,") + "…"
         rw = text_width(text, tface) + text_width(label, lface) + 50
         panel(card, (right - rw, 572, right, 616), radius=22, fill=(0, 0, 0, 150))
         draw.text((right - rw + 18, 581), label, font=lface, fill=SOFT)
@@ -912,9 +922,62 @@ def zzz_build(agent, owner: str, disc_icons: dict) -> tuple[dict, dict]:
     return urls, spec
 
 
+# Akasha's Cloudflare turns away curl's default User-Agent; a plain bot name
+# from the bot's server gets through
+BOT_UA = "neon_bot/1.0"
+RANK_TTL = 5 * 60
+AKASHA_API = "https://akasha.cv/api/"
 INTERKNOT_API = "https://data.interknot.space/"
-INTERKNOT_TTL = 5 * 60
+_akasha = {}
 _interknot = {}
+
+
+def _parse_rank(value) -> int:
+    """Akasha writes estimated ranks as "~123" """
+    try:
+        return int(str(value).lstrip("~").replace(",", ""))
+    except ValueError:
+        return 0
+
+
+async def akasha_ranks(uid) -> dict:
+    """
+    A Genshin player's Akasha (akasha.cv) damage leaderboard ranks: character
+    id -> {name, rank, out} for each character's best-fitting board. Empty when
+    the player isn't on Akasha or it can't be reached.
+    """
+    cached = _akasha.get(str(uid))
+    if cached and time.time() - cached[0] < RANK_TTL:
+        return cached[1]
+    ranks = {}
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30), headers={"User-Agent": BOT_UA}
+        ) as session:
+            # Has Akasha load the player's current showcase; it rate limits
+            # this itself, so a failure here still leaves the older ranks
+            try:
+                async with session.get(f"{AKASHA_API}user/refresh/{uid}") as resp:
+                    await resp.read()
+            except aiohttp.ClientError:
+                pass
+            url = f"{AKASHA_API}getCalculationsForUser/{uid}"
+            async with session.get(url) as resp:
+                entries = (await resp.json(content_type=None)).get("data") or []
+        for entry in entries:
+            fit = (entry.get("calculations") or {}).get("fit") or {}
+            rank, out = _parse_rank(fit.get("ranking")), _parse_rank(fit.get("outOf"))
+            character = _parse_rank(entry.get("characterId"))
+            if rank and out and character:
+                ranks[character] = {
+                    "name": fit.get("name") or fit.get("short") or "",
+                    "rank": rank,
+                    "out": out,
+                }
+    except Exception:
+        return {}
+    _akasha[str(uid)] = (time.time(), ranks)
+    return ranks
 
 
 async def interknot_ranks(uid) -> dict:
@@ -924,13 +987,13 @@ async def interknot_ranks(uid) -> dict:
     agent. Empty when the player isn't on Inter-Knot or it can't be reached.
     """
     cached = _interknot.get(str(uid))
-    if cached and time.time() - cached[0] < INTERKNOT_TTL:
+    if cached and time.time() - cached[0] < RANK_TTL:
         return cached[1]
     ranks = {}
     try:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30),
-            headers={"User-Agent": "neon_bot (+https://github.com/Pah-0/neon_bot)"},
+            headers={"User-Agent": BOT_UA},
         ) as session:
             # update=true has Inter-Knot refresh the player from Enka first
             url = f"{INTERKNOT_API}leaderboards/{uid}"
@@ -959,6 +1022,8 @@ async def build_card(game: str, character, owner: str, uid=None) -> bytes:
     """The build card for a showcase character of game (gi, hsr or zzz)"""
     if game == "gi":
         urls, spec = gi_build(character, owner)
+        if uid:
+            spec["leaderboard"] = (await akasha_ranks(uid)).get(character.id)
     elif game == "hsr":
         urls, spec = hsr_build(character, owner)
     else:
