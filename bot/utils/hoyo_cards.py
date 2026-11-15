@@ -429,6 +429,36 @@ def _draw_build(spec: dict, art: dict) -> bytes:
     panel(card, (930 - bw, 572, 930, 616), radius=22, fill=(0, 0, 0, 150))
     draw.text((930 - bw + 18, 578), badge, font=face, fill=GOLD if cv >= 200 else WHITE)
 
+    # Leaderboard rank, left of the CV badge
+    board = spec.get("leaderboard")
+    if board:
+        top = board["rank"] / board["out"] * 100
+        if top < 0.01:
+            share = "<0.01"
+        elif top < 1:
+            share = f"{top:.2f}"
+        elif top < 10:
+            share = f"{top:.1f}"
+        else:
+            share = f"{top:.0f}"
+        text = f"Top {share}%  ·  {board['rank']:,}/{board['out']:,}"
+        right = 930 - bw - 12
+        tface = font(26, True)
+        lface = font(22)
+        # Long board names are cut, not shrunk past reading
+        label = board["name"]
+        while label and text_width(label, lface) > 280:
+            label = label[:-2].rstrip(" ,") + "…"
+        rw = text_width(text, tface) + text_width(label, lface) + 50
+        panel(card, (right - rw, 572, right, 616), radius=22, fill=(0, 0, 0, 150))
+        draw.text((right - rw + 18, 581), label, font=lface, fill=SOFT)
+        draw.text(
+            (right - 18 - text_width(text, tface), 578),
+            text,
+            font=tface,
+            fill=GOLD if top <= 10 else WHITE,
+        )
+
     # Talents / traces / skills by the right panel, in two columns past four
     skills = spec["skills"]
     cols = 1 if len(skills) <= 4 else 2
@@ -927,14 +957,114 @@ def zzz_build(agent, owner: str, disc_icons: dict) -> tuple[dict, dict]:
     return urls, spec
 
 
-async def build_card(game: str, character, owner: str) -> bytes:
+# Akasha's Cloudflare turns away curl's default User-Agent; a plain bot name
+# from the bot's server gets through
+BOT_UA = "neon_bot/1.0"
+RANK_TTL = 5 * 60
+AKASHA_API = "https://akasha.cv/api/"
+INTERKNOT_API = "https://data.interknot.space/"
+_akasha = {}
+_interknot = {}
+
+
+def _parse_rank(value) -> int:
+    """Akasha writes estimated ranks as "~123" """
+    try:
+        return int(str(value).lstrip("~").replace(",", ""))
+    except ValueError:
+        return 0
+
+
+async def akasha_ranks(uid) -> dict:
+    """
+    A Genshin player's Akasha (akasha.cv) damage leaderboard ranks: character
+    id -> {name, rank, out} for each character's best-fitting board. Empty when
+    the player isn't on Akasha or it can't be reached.
+    """
+    cached = _akasha.get(str(uid))
+    if cached and time.time() - cached[0] < RANK_TTL:
+        return cached[1]
+    ranks = {}
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30), headers={"User-Agent": BOT_UA}
+        ) as session:
+            # Has Akasha load the player's current showcase; it rate limits
+            # this itself, so a failure here still leaves the older ranks
+            try:
+                async with session.get(f"{AKASHA_API}user/refresh/{uid}") as resp:
+                    await resp.read()
+            except aiohttp.ClientError:
+                pass
+            url = f"{AKASHA_API}getCalculationsForUser/{uid}"
+            async with session.get(url) as resp:
+                entries = (await resp.json(content_type=None)).get("data") or []
+        for entry in entries:
+            fit = (entry.get("calculations") or {}).get("fit") or {}
+            rank, out = _parse_rank(fit.get("ranking")), _parse_rank(fit.get("outOf"))
+            character = _parse_rank(entry.get("characterId"))
+            if rank and out and character:
+                ranks[character] = {
+                    "name": fit.get("name") or fit.get("short") or "",
+                    "rank": rank,
+                    "out": out,
+                }
+    except Exception:
+        return {}
+    _akasha[str(uid)] = (time.time(), ranks)
+    return ranks
+
+
+async def interknot_ranks(uid) -> dict:
+    """
+    A ZZZ player's leaderboard ranks from Inter-Knot (interknot.space), the
+    ZZZ counterpart of Akasha: agent id -> {name, rank, out}, best board per
+    agent. Empty when the player isn't on Inter-Knot or it can't be reached.
+    """
+    cached = _interknot.get(str(uid))
+    if cached and time.time() - cached[0] < RANK_TTL:
+        return cached[1]
+    ranks = {}
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30),
+            headers={"User-Agent": BOT_UA},
+        ) as session:
+            # update=true has Inter-Knot refresh the player from Enka first
+            url = f"{INTERKNOT_API}leaderboards/{uid}"
+            async with session.get(url, params={"update": "true"}) as resp:
+                entries = (await resp.json(content_type=None)).get("data") or []
+        for entry in entries:
+            board = entry.get("Leaderboard") or {}
+            agent = (board.get("Character") or {}).get("Id")
+            rank, out = entry.get("Rank"), board.get("Total")
+            if not (agent and rank and out):
+                continue
+            best = ranks.get(agent)
+            if best is None or rank / out < best["rank"] / best["out"]:
+                ranks[agent] = {
+                    "name": board.get("FullName") or "",
+                    "rank": rank,
+                    "out": out,
+                }
+    except Exception:
+        return {}
+    _interknot[str(uid)] = (time.time(), ranks)
+    return ranks
+
+
+async def build_card(game: str, character, owner: str, uid=None) -> bytes:
     """The build card for a showcase character of game (gi, hsr or zzz)"""
     if game == "gi":
         urls, spec = gi_build(character, owner)
+        if uid:
+            spec["leaderboard"] = (await akasha_ranks(uid)).get(character.id)
     elif game == "hsr":
         urls, spec = hsr_build(character, owner)
     else:
         urls, spec = zzz_build(character, owner, await zzz_disc_icons())
+        if uid:
+            spec["leaderboard"] = (await interknot_ranks(uid)).get(character.id)
     await ensure_fonts(owner, spec["name"])
     art = await fetch_images(urls)
     if art.get("splash") is None:
