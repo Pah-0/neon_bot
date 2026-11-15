@@ -119,7 +119,11 @@ async def hoyo_search(event, args, client):
         image, caption, extra = await get_details(entry, level)
         if sections and entry["kind"] == "character":
             names = SECTIONS[entry["game"]]
-            caption += "\n_" + ", ".join(names[s] for s in dict.fromkeys(sections)) + " below._"
+            caption += (
+                "\n_"
+                + ", ".join(names[s] for s in dict.fromkeys(sections))
+                + " below._"
+            )
         if image:
             await event.reply_photo(image, caption)
         else:
