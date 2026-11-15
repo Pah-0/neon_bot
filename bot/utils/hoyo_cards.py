@@ -343,14 +343,17 @@ def _circle_item(card, draw, box, item, colour, art):
     ring = colour + (255,) if on else (255, 255, 255, 60)
     draw.ellipse(box, fill=(0, 0, 0, 140), outline=ring, width=4)
     x0, y0, x1, y1 = box
-    pad = (x1 - x0) * 0.18
+    pad = 4 if item.get("fill") else (x1 - x0) * 0.18
     icon = art.get(item.get("icon"))
     if icon is not None:
         if not on:
             icon = icon.copy()
             icon.putalpha(icon.getchannel("A").point(lambda a: a * 0.4))
         paste_fit(
-            card, icon, (int(x0 + pad), int(y0 + pad), int(x1 - pad), int(y1 - pad))
+            card,
+            icon,
+            (int(x0 + pad), int(y0 + pad), int(x1 - pad), int(y1 - pad)),
+            circle=bool(item.get("fill")),
         )
     elif item.get("label"):
         label = item["label"]
@@ -363,6 +366,13 @@ def _circle_item(card, draw, box, item, colour, art):
             font=face,
             fill=fill,
         )
+    if item.get("badge"):
+        badge = item["badge"]
+        face = font(20, True)
+        bw = text_width(badge, face) + 14
+        bx, by = x1 - bw + 4, y1 - 26
+        panel(card, (bx, by, bx + bw, by + 28), radius=14, fill=(20, 20, 30, 230))
+        draw.text((bx + 7, by + 1), badge, font=face, fill=WHITE if on else FAINT)
 
 
 def _draw_build(spec: dict, art: dict) -> bytes:
@@ -796,6 +806,15 @@ def hsr_build(character, owner: str) -> tuple[dict, dict]:
 ZZZ_ASSETS = "https://static.nanoka.cc/assets/zzz/"
 ZZZ_DATA = "https://static.nanoka.cc/"
 ZZZ_SKILLS = {0: "Basic", 1: "Special", 2: "Dodge", 3: "Chain", 5: "Core", 6: "Assist"}
+# The game's skill-type icons, from Hakushin (Enka has none)
+ZZZ_SKILL_ICONS = {
+    0: "Icon_Normal",
+    1: "Icon_SpecialReady",
+    2: "Icon_Evade",
+    3: "Icon_UltimateReady",
+    5: "Icon_CoreSkill",
+    6: "Icon_Switch",
+}
 _disc_icons = {"time": 0.0, "icons": {}}
 
 
@@ -848,7 +867,17 @@ def zzz_build(agent, owner: str, disc_icons: dict) -> tuple[dict, dict]:
                 "cv": crit_value([disc.main_stat, *disc.sub_stats]),
             }
         )
-    column = [{"label": f"M{i}", "on": i <= agent.mindscape} for i in range(1, 7)]
+    urls["mindscape"] = agent.icon.round
+    column = [
+        {
+            "icon": "mindscape",
+            "label": f"M{i}",
+            "badge": str(i),
+            "fill": True,
+            "on": i <= agent.mindscape,
+        }
+        for i in range(1, 7)
+    ]
     skills = []
     for skill in sorted(
         agent.skills,
@@ -858,7 +887,13 @@ def zzz_build(agent, owner: str, disc_icons: dict) -> tuple[dict, dict]:
     ):
         kind = int(getattr(skill.type, "value", skill.type))
         level = agent.core_skill_level if kind == 5 else skill.level
-        skills.append({"label": ZZZ_SKILLS.get(kind, "?"), "level": level})
+        icon = ZZZ_SKILL_ICONS.get(kind)
+        if icon:
+            urls[f"skill{kind}"] = f"{ZZZ_ASSETS}{icon}.webp"
+        # The label stays as a fallback if the icon doesn't load
+        skills.append(
+            {"icon": f"skill{kind}", "label": ZZZ_SKILLS.get(kind, "?"), "level": level}
+        )
     weapon = None
     engine = agent.w_engine
     if engine is not None:
