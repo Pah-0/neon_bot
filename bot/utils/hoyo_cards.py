@@ -16,9 +16,9 @@ import json
 import math
 import os
 import re
-import unicodedata
 import threading
 import time
+import unicodedata
 
 import aiohttp
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
