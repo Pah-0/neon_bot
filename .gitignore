@@ -178,3 +178,6 @@ weights
 .pr_test
 .pr_result
 .bot_stderr.log
+
+# enka.py's game asset cache
+.enka_py/
