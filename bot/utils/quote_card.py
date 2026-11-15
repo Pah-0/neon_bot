@@ -112,9 +112,12 @@ def _draw_quote(
     lines = wrap(text, TEXT_SIZE, False, MAX_TEXT_W, emojis) if text else []
     line_h = int(TEXT_SIZE * 1.42)
     name_w = rich_width(name, NAME_SIZE, True, emojis)
+    # The sender's tag: a pill under their name, as WhatsApp shows it
+    tag_w = tag_h = 0
     if tag:
-        tag = fit_rich(tag, TAG_SIZE, False, 260, emojis)
-        name_w += 12 + rich_width(tag, TAG_SIZE, False, emojis)
+        tag = fit_rich(tag, TAG_SIZE, False, MAX_TEXT_W - 36, emojis)
+        tag_w = rich_width(tag, TAG_SIZE, False, emojis) + 36
+        tag_h = TAG_SIZE + 22
     text_w = max(
         (rich_width(line, TEXT_SIZE, False, emojis) for line in lines), default=0
     )
@@ -146,8 +149,8 @@ def _draw_quote(
             rich_width(reply["text"], REPLY_SIZE, False, emojis),
         )
         reply_h = REPLY_SIZE * 2 + 34
-    inner_w = max(name_w, text_w, media_size[0], reply_w, 160)
-    inner_h = NAME_SIZE + 14
+    inner_w = max(name_w, tag_w, text_w, media_size[0], reply_w, 160)
+    inner_h = NAME_SIZE + 14 + (tag_h + 12 if tag else 0)
     if reply:
         inner_h += reply_h + 14
     if media is not None:
@@ -191,10 +194,24 @@ def _draw_quote(
     draw.polygon(tail, fill=BUBBLE + (255,))
 
     x, y = bx0 + PAD, by0 + PAD - 6
-    _draw_name(
-        card, draw, x, y, name, NAME_SIZE, colour + (255,), tag, TAG_SIZE, emojis
-    )
+    draw_rich(card, draw, (x, y), name, NAME_SIZE, True, colour + (255,), emojis)
     y += NAME_SIZE + 14
+    if tag:
+        # Tinted in the name's colour, with a fainter border; drawn on its
+        # own layer, since drawing on the transparent card wouldn't blend
+        layer = Image.new("RGBA", card.size, (0, 0, 0, 0))
+        ImageDraw.Draw(layer).rounded_rectangle(
+            (x, y, x + tag_w, y + tag_h),
+            tag_h // 2,
+            fill=colour + (34,),
+            outline=colour + (90,),
+            width=2,
+        )
+        card.alpha_composite(layer)
+        draw_rich(
+            card, draw, (x + 18, y + 6), tag, TAG_SIZE, False, colour + (255,), emojis
+        )
+        y += tag_h + 12
     if reply:
         # Like WhatsApp: a tinted box with a bar in the replied sender's colour
         rx1 = x + inner_w
