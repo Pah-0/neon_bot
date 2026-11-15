@@ -202,6 +202,74 @@ def short(text: str | None, limit: int = 400) -> str:
     return (cut[: end + 1] if end > limit // 3 else cut).rstrip() + "…"
 
 
+# Talent levels shown by default: the highest without constellation boosts
+GI_TALENT_LEVEL = 10
+ZZZ_SKILL_LEVEL = 12
+
+
+def _gi_param(value: float, fmt: str) -> str:
+    """A Genshin talent value in its format: P percent, F1P percent to 1dp,
+    F1 number to 1dp, I whole number"""
+    percent = fmt.endswith("P")
+    if percent:
+        value *= 100
+    digits = fmt[1:].rstrip("P")
+    if fmt.startswith("F") and digits.isdigit():
+        text = f"{value:.{int(digits)}f}"
+    elif fmt == "I":
+        text = str(round(value))
+    else:
+        text = f"{value:.2f}".rstrip("0").rstrip(".")
+    return text + ("%" if percent else "")
+
+
+def gi_talent_table(talent: dict, level: int) -> str:
+    """A Genshin talent's attribute rows at level, e.g. "• Skill DMG: 430.56%" """
+    promote = talent.get("promote") or {}
+    if not promote:
+        return ""
+    level = min(level, max(map(int, promote)))
+    row = promote.get(str(level)) or {}
+    params = row.get("params") or []
+
+    def fill(m):
+        index = int(m.group(1)) - 1
+        if index >= len(params):
+            return m.group(0)
+        return _gi_param(params[index], m.group(2))
+
+    lines = []
+    for entry in row.get("description") or []:
+        label, _, template = entry.partition("|")
+        if not label:
+            continue
+        value = re.sub(r"\{param(\d+):([A-Z0-9]+)\}", fill, template)
+        lines.append(f"• {clean(label)}: {value}")
+    return f"_Lv. {level}_\n" + "\n".join(lines) if lines else ""
+
+
+def zzz_skill_table(rows: list, level: int) -> list[str]:
+    """A ZZZ skill's multiplier rows at level, from Hakushin's base + growth"""
+    lines = []
+    for row in rows:
+        for values in (row.get("param") or {}).values():
+            # Prop 1002 is the Daze multiplier; others use the main value
+            prop = re.search(r"Prop:(\d+)", row.get("desc") or "")
+            if prop and prop.group(1) == "1002":
+                base, growth = values.get("stun_ratio", 0), values.get(
+                    "stun_ratio_growth", 0
+                )
+            else:
+                base, growth = values.get("main", 0), values.get("growth", 0)
+            value = (base + growth * (level - 1)) / 100
+            unit = "%" if values.get("format") == "%" else ""
+            lines.append(
+                f"• {row.get('name', '')}: {value:.1f}".rstrip("0").rstrip(".") + unit
+            )
+            break
+    return lines
+
+
 def stars(rarity: int) -> str:
     return "⭐" * rarity
 
@@ -519,7 +587,13 @@ async def _gi_character(session, entry) -> tuple:
 
     sections = {
         "t": "\n\n".join(
-            f"*{t['name']}*\n{clean(t.get('description'))}" for t in talents
+            f"*{t['name']}*\n{clean(t.get('description'))}"
+            + (
+                f"\n\n{table}"
+                if (table := gi_talent_table(t, entry.get("level") or GI_TALENT_LEVEL))
+                else ""
+            )
+            for t in talents
         ),
         "c": "\n\n".join(
             f"*C{i} · {c['name']}*\n{clean(c.get('description'))}"
@@ -631,6 +705,8 @@ async def _hsr_character(session, entry) -> tuple:
         params = skill.get("params") or {}
         # Abilities at their highest level without Eidolon boosts
         level = skill.get("cap") or skill.get("maxLevel") or 1
+        if entry.get("level"):
+            level = min(entry["level"], skill.get("maxLevel") or entry["level"])
         top = [
             values[min(level, len(values)) - 1] if values else None
             for _, values in sorted(params.items(), key=lambda p: int(p[0]))
@@ -764,13 +840,21 @@ async def _zzz_character(session, entry) -> tuple:
             + ", ".join(f"M{i} {m['name']}" for i, m in enumerate(mindscapes, 1))
             + "\n"
         )
-    skills = []
+    skills = {}
+    level = entry.get("level") or ZZZ_SKILL_LEVEL
     for group, skill in (data.get("skill") or {}).items():
-        for part in skill.get("description") or []:
+        parts = skill.get("description") or []
+        for part in parts:
             if part.get("desc"):
-                skills.append(f"*{part['name']}*\n{clean(part['desc'])}")
+                skills[part["name"]] = f"*{part['name']}*\n{clean(part['desc'])}"
+        # Multiplier tables come after the descriptions, under the same names
+        for part in parts:
+            if part.get("param") and part.get("name") in skills:
+                rows = zzz_skill_table(part["param"], level)
+                if rows:
+                    skills[part["name"]] += f"\n\n_Lv. {level}_\n" + "\n".join(rows)
     sections = {
-        "t": "\n\n".join(skills),
+        "t": "\n\n".join(skills.values()),
         "c": "\n\n".join(
             f"*M{i} · {m['name']}*\n{clean(m.get('desc'))}"
             for i, m in enumerate(mindscapes, 1)
@@ -851,8 +935,14 @@ BUILDERS = {
 }
 
 
-async def get_details(entry: dict) -> tuple[bytes | None, str, dict]:
-    """(image, caption, {flag: section text}) for a search result"""
+async def get_details(
+    entry: dict, level: int | None = None
+) -> tuple[bytes | None, str, dict]:
+    """
+    (image, caption, {flag: section text}) for a search result; level sets
+    the talent/trace/skill level shown
+    """
+    entry = {**entry, "level": level}
     async with aiohttp.ClientSession(timeout=TIMEOUT) as session:
         urls, multi, caption, sections = await BUILDERS[(entry["game"], entry["kind"])](
             session, entry

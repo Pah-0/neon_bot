@@ -64,6 +64,8 @@ async def hoyo_search(event, args, client):
             W-Engines) or sets (artifacts, relics, drive discs)
         -t : also send a character's talents, traces or skills
         -c : also send a character's constellations, eidolons or mindscapes
+        -lv <n> : the talent/trace/skill level for -t's scaling (default:
+            10 for Genshin, each trace's cap for Star Rail, 12 for ZZZ)
     """
     user = event.from_user.id
     if not user_is_privileged(user):
@@ -71,11 +73,19 @@ async def hoyo_search(event, args, client):
             return
         if not user_is_allowed(user):
             return await event.react("⛔")
-    game = kind = None
+    game = kind = level = None
     sections, words = [], []
-    for word in args.split():
+    tokens = args.split()
+    while tokens:
+        word = tokens.pop(0)
         flag = word.casefold()
-        if flag.lstrip("-") in GAMES and flag.startswith("-"):
+        if flag.startswith("-lv"):
+            number = flag[3:] or (tokens.pop(0) if tokens else "")
+            if number.isdigit() and 1 <= int(number) <= 15:
+                level = int(number)
+            else:
+                return await event.reply("*-lv takes a level from 1 to 15.*")
+        elif flag.lstrip("-") in GAMES and flag.startswith("-"):
             game = flag.lstrip("-")
         elif flag in KIND_FLAGS:
             kind = KIND_FLAGS[flag]
@@ -103,7 +113,7 @@ async def hoyo_search(event, args, client):
             if not entry:
                 return await event.reply("Time out!")
             status = await event.reply(f"*Fetching {label(entry)}…*")
-        image, caption, extra = await get_details(entry)
+        image, caption, extra = await get_details(entry, level)
         if sections and entry["kind"] == "character":
             names = SECTIONS[entry["game"]]
             caption += "\n_" + ", ".join(names[s] for s in sections) + " below._"
