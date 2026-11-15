@@ -419,6 +419,26 @@ def _draw_build(spec: dict, art: dict) -> bytes:
     panel(card, (930 - bw, 572, 930, 616), radius=22, fill=(0, 0, 0, 150))
     draw.text((930 - bw + 18, 578), badge, font=face, fill=GOLD if cv >= 200 else WHITE)
 
+    # Leaderboard rank, left of the CV badge
+    board = spec.get("leaderboard")
+    if board:
+        top = board["rank"] / board["out"] * 100
+        share = f"{top:.1f}" if top < 10 else f"{top:.0f}"
+        text = f"Top {share}%  ·  {board['rank']:,}/{board['out']:,}"
+        label = board["name"]
+        right = 930 - bw - 12
+        tface = font(26, True)
+        lface = fit_font(label, 22, 260)
+        rw = text_width(text, tface) + text_width(label, lface) + 50
+        panel(card, (right - rw, 572, right, 616), radius=22, fill=(0, 0, 0, 150))
+        draw.text((right - rw + 18, 581), label, font=lface, fill=SOFT)
+        draw.text(
+            (right - 18 - text_width(text, tface), 578),
+            text,
+            font=tface,
+            fill=GOLD if top <= 10 else WHITE,
+        )
+
     # Talents / traces / skills by the right panel, in two columns past four
     skills = spec["skills"]
     cols = 1 if len(skills) <= 4 else 2
@@ -892,7 +912,50 @@ def zzz_build(agent, owner: str, disc_icons: dict) -> tuple[dict, dict]:
     return urls, spec
 
 
-async def build_card(game: str, character, owner: str) -> bytes:
+INTERKNOT_API = "https://data.interknot.space/"
+INTERKNOT_TTL = 5 * 60
+_interknot = {}
+
+
+async def interknot_ranks(uid) -> dict:
+    """
+    A ZZZ player's leaderboard ranks from Inter-Knot (interknot.space), the
+    ZZZ counterpart of Akasha: agent id -> {name, rank, out}, best board per
+    agent. Empty when the player isn't on Inter-Knot or it can't be reached.
+    """
+    cached = _interknot.get(str(uid))
+    if cached and time.time() - cached[0] < INTERKNOT_TTL:
+        return cached[1]
+    ranks = {}
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30),
+            headers={"User-Agent": "neon_bot (+https://github.com/Pah-0/neon_bot)"},
+        ) as session:
+            # update=true has Inter-Knot refresh the player from Enka first
+            url = f"{INTERKNOT_API}leaderboards/{uid}"
+            async with session.get(url, params={"update": "true"}) as resp:
+                entries = (await resp.json(content_type=None)).get("data") or []
+        for entry in entries:
+            board = entry.get("Leaderboard") or {}
+            agent = (board.get("Character") or {}).get("Id")
+            rank, out = entry.get("Rank"), board.get("Total")
+            if not (agent and rank and out):
+                continue
+            best = ranks.get(agent)
+            if best is None or rank / out < best["rank"] / best["out"]:
+                ranks[agent] = {
+                    "name": board.get("FullName") or "",
+                    "rank": rank,
+                    "out": out,
+                }
+    except Exception:
+        return {}
+    _interknot[str(uid)] = (time.time(), ranks)
+    return ranks
+
+
+async def build_card(game: str, character, owner: str, uid=None) -> bytes:
     """The build card for a showcase character of game (gi, hsr or zzz)"""
     if game == "gi":
         urls, spec = gi_build(character, owner)
@@ -900,6 +963,8 @@ async def build_card(game: str, character, owner: str) -> bytes:
         urls, spec = hsr_build(character, owner)
     else:
         urls, spec = zzz_build(character, owner, await zzz_disc_icons())
+        if uid:
+            spec["leaderboard"] = (await interknot_ranks(uid)).get(character.id)
     await ensure_fonts(owner, spec["name"])
     art = await fetch_images(urls)
     if art.get("splash") is None:

@@ -184,7 +184,9 @@ async def game_profile(event, args, game: str):
                 status = None
                 return
             await status.edit(f"*Drawing {character.name}'s card…*")
-            return await event.reply_photo(await build_card(game, character, owner))
+            return await event.reply_photo(
+                await build_card(game, character, owner, uid)
+            )
 
         await status.edit("*Drawing the profile card…*")
         caption = f"*{
@@ -206,7 +208,7 @@ async def game_profile(event, args, game: str):
         if character is None:
             return
         status = await event.reply(f"*Drawing {character.name}'s card…*")
-        await event.reply_photo(await build_card(game, character, owner))
+        await event.reply_photo(await build_card(game, character, owner, uid))
     except Exception as e:
         await logger(Exception)
         await event.react("❌")
