@@ -16,6 +16,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 
 import aiohttp
@@ -32,6 +33,7 @@ FONTS = {
     "kr": "notosanskr/NotoSansKR%5Bwght%5D.ttf",
 }
 ENKA_UI = "https://enka.network/ui/"
+AMBER_UI = "https://gi.yatta.moe/assets/UI/"
 TIMEOUT = aiohttp.ClientTimeout(total=60)
 
 WHITE = (255, 255, 255, 255)
@@ -142,10 +144,80 @@ async def ensure_fonts(*texts: str):
 _fonts = {}
 
 
+# Cards are laid out in 1× units and drawn at the render's scale (-2x draws
+# twice the pixels). Renders run in a thread pool, so the scale is per thread.
+_render = threading.local()
+
+
+def S() -> int:
+    """The current render's scale"""
+    return getattr(_render, "scale", 1)
+
+
+def px(value: float) -> int:
+    """A 1× length in the current render's pixels"""
+    return int(round(value * S()))
+
+
+class ScaledDraw:
+    """ImageDraw that takes 1× coordinates and draws at the render's scale"""
+
+    def __init__(self, draw: ImageDraw.ImageDraw):
+        self._draw = draw
+
+    @staticmethod
+    def _xy(points):
+        return (
+            [v * S() for v in points]
+            if not isinstance(points[0], (tuple, list))
+            else [(x * S(), y * S()) for x, y in points]
+        )
+
+    def text(self, xy, text, stroke_width=0, **kwargs):
+        self._draw.text(
+            (xy[0] * S(), xy[1] * S()), text, stroke_width=px(stroke_width), **kwargs
+        )
+
+    def ellipse(self, box, width=1, **kwargs):
+        self._draw.ellipse(self._xy(box), width=px(width), **kwargs)
+
+    def rounded_rectangle(self, box, radius=0, width=1, **kwargs):
+        self._draw.rounded_rectangle(
+            self._xy(box), px(radius), width=px(width), **kwargs
+        )
+
+    def line(self, xy, width=1, **kwargs):
+        self._draw.line(self._xy(xy), width=px(width), **kwargs)
+
+    def polygon(self, points, **kwargs):
+        self._draw.polygon(self._xy(points), **kwargs)
+
+
+def scaled(draw_card):
+    """Runs a card drawer at the scale given as its scale keyword"""
+
+    def run(*args, scale: int = 1):
+        _render.scale = scale
+        try:
+            return draw_card(*args)
+        finally:
+            _render.scale = 1
+
+    return run
+
+
+def new_card(size: tuple, colour) -> tuple[Image.Image, ScaledDraw]:
+    """A blank card of 1× size at the render's scale, and its drawing"""
+    card = Image.new("RGB", (px(size[0]), px(size[1])), colour)
+    return card, ScaledDraw(ImageDraw.Draw(card, "RGBA"))
+
+
 def font(size: int, bold: bool = False, text: str = "") -> ImageFont.FreeTypeFont:
+    """A font of 1× size, loaded at the render's scale"""
     script = _script(text)
     if script not in _font_paths:
         script = "latin"
+    size = px(size)
     key = (script, size, bold)
     if key not in _fonts:
         face = ImageFont.truetype(_font_paths[script], size)
@@ -167,7 +239,8 @@ def font(size: int, bold: bool = False, text: str = "") -> ImageFont.FreeTypeFon
 
 
 def text_width(text: str, face) -> float:
-    return face.getlength(text)
+    """text's width in 1× units"""
+    return face.getlength(text) / S()
 
 
 def fit_font(text: str, size: int, width: int, bold: bool = False):
@@ -181,12 +254,12 @@ def fit_font(text: str, size: int, width: int, bold: bool = False):
 
 
 def put(card: Image.Image, image: Image.Image, pos: tuple = (0, 0)):
-    """An RGBA image over the (RGB) card, blended by its alpha"""
-    card.paste(image, (int(pos[0]), int(pos[1])), image)
+    """An RGBA image (already at the render's scale) over the card at 1× pos"""
+    card.paste(image, (px(pos[0]), px(pos[1])), image)
 
 
 def panel(card: Image.Image, box: tuple, radius: int = 18, fill=PANEL):
-    ImageDraw.Draw(card, "RGBA").rounded_rectangle(box, radius, fill=fill)
+    ScaledDraw(ImageDraw.Draw(card, "RGBA")).rounded_rectangle(box, radius, fill=fill)
 
 
 def paste_fit(
@@ -195,7 +268,7 @@ def paste_fit(
     """image scaled to fit box, centred; optionally cut to a circle"""
     if image is None:
         return
-    x0, y0, x1, y1 = box
+    x0, y0, x1, y1 = (px(v) for v in box)
     image = image.copy()
     image.thumbnail((x1 - x0, y1 - y0), Image.Resampling.LANCZOS)
     x = x0 + (x1 - x0 - image.width) // 2
@@ -206,7 +279,7 @@ def paste_fit(
             (0, 0, image.width - 1, image.height - 1), fill=255
         )
         image.putalpha(Image.composite(image.getchannel("A"), mask, mask))
-    put(card, image, (x, y))
+    card.paste(image, (x, y), image)
 
 
 def star(draw: ImageDraw.ImageDraw, x: float, y: float, r: float, fill=GOLD):
@@ -237,15 +310,15 @@ def stars(draw, x: float, y: float, count: int, r: float = 10, fill=GOLD):
 def gradient(
     size: tuple, start: tuple, end: tuple, horizontal: bool = False
 ) -> Image.Image:
-    """An RGBA gradient from start to end colour"""
-    w, h = size
+    """An RGBA gradient from start to end colour, of 1× size"""
+    w, h = px(size[0]), px(size[1])
     steps = w if horizontal else h
     line = Image.new("RGBA", (steps, 1) if horizontal else (1, steps))
     for i in range(steps):
         t = i / max(steps - 1, 1)
         colour = tuple(int(a + (b - a) * t) for a, b in zip(start, end))
         line.putpixel((i, 0) if horizontal else (0, i), colour)
-    return line.resize(size)
+    return line.resize((w, h))
 
 
 def to_jpeg(card: Image.Image) -> bytes:
@@ -316,17 +389,17 @@ def _background(card, art, colour):
     splash = art.get("splash")
     if splash is not None:
         splash = splash.copy()
-        scale = (H - 40) / splash.height
+        scale = px(H - 40) / splash.height
         splash = splash.resize(
-            (int(splash.width * scale), H - 40), Image.Resampling.LANCZOS
+            (int(splash.width * scale), px(H - 40)), Image.Resampling.LANCZOS
         )
-        if splash.width > SPLASH_W + 300:
-            left = (splash.width - SPLASH_W - 300) // 2
-            splash = splash.crop((left, 0, left + SPLASH_W + 300, splash.height))
+        if splash.width > px(SPLASH_W + 300):
+            left = (splash.width - px(SPLASH_W + 300)) // 2
+            splash = splash.crop((left, 0, left + px(SPLASH_W + 300), splash.height))
         shadow = Image.new("RGBA", splash.size, (0, 0, 0, 0))
         shadow.putalpha(splash.getchannel("A").point(lambda a: a * 0.45))
-        shadow = shadow.filter(ImageFilter.GaussianBlur(18))
-        x = (SPLASH_W - splash.width) // 2 + 60
+        shadow = shadow.filter(ImageFilter.GaussianBlur(px(18)))
+        x = (SPLASH_W - splash.width / S()) // 2 + 60
         put(card, shadow, (x + 14, 34))
         put(card, splash, (x, 20))
     put(card, gradient((W, 260), (0, 0, 0, 0), (0, 0, 0, 170)), (0, H - 260))
@@ -361,7 +434,7 @@ def _circle_item(card, draw, box, item, colour, art):
         tw = text_width(label, face)
         fill = WHITE if on else FAINT
         draw.text(
-            ((x0 + x1 - tw) / 2, (y0 + y1) / 2 - face.size * 0.62),
+            ((x0 + x1 - tw) / 2, (y0 + y1) / 2 - face.size / S() * 0.62),
             label,
             font=face,
             fill=fill,
@@ -375,110 +448,148 @@ def _circle_item(card, draw, box, item, colour, art):
         draw.text((bx + 7, by + 1), badge, font=face, fill=WHITE if on else FAINT)
 
 
+PILL_FONT = 18
+
+
 def _pill(card, draw, x: float, y: float, text: str, fill, colour=WHITE) -> float:
     """A rounded label; returns its right edge"""
-    face = font(22, True)
-    w = text_width(text, face) + 28
-    panel(card, (x, y, x + w, y + 38), radius=19, fill=fill)
-    draw.text((x + 14, y + 5), text, font=face, fill=colour)
+    face = font(PILL_FONT, True)
+    w = text_width(text, face) + 22
+    panel(card, (x, y, x + w, y + 30), radius=15, fill=fill)
+    draw.text((x + 11, y + 4), text, font=face, fill=colour)
     return x + w
 
 
-RANK_X0, RANK_X1 = 130, 436
+# The rank sits right-aligned over the art, above the character's name
+RANK_RIGHT, RANK_BOTTOM, RANK_MAX_W = 930, 398, 400
+TILE, TILE_GAP = 48, 8
+AKASHA_ELEMENTS = {
+    "Pyro": "Fire",
+    "Hydro": "Water",
+    "Anemo": "Wind",
+    "Electro": "Electric",
+    "Dendro": "Grass",
+    "Cryo": "Ice",
+    "Geo": "Rock",
+}
 
 
-def _draw_rank(card, draw, board: dict, art: dict, colour: tuple, y: int) -> int:
-    """
-    The Akasha / Inter-Knot rank under the stats, laid out like Akasha's: the
-    board's team, a top-% pill and the board's short name, then the rank.
-    Starts right of the constellation column; returns its bottom.
-    """
-    team = board.get("team") or []
+def _top_share(board: dict) -> str:
     top = board["rank"] / board["out"] * 100
     if top < 0.01:
-        share = "<0.01"
-    elif top < 1:
-        share = f"{top:.2f}"
-    elif top < 10:
-        share = f"{top:.1f}"
-    else:
-        share = f"{top:.0f}"
-    top_text = f"TOP {share}%"
+        return "<0.01"
+    if top < 1:
+        return f"{top:.2f}"
+    if top < 10:
+        return f"{top:.1f}"
+    return f"{top:.0f}"
+
+
+def _draw_rank(card, draw, board: dict, art: dict, colour: tuple):
+    """
+    The Akasha / Inter-Knot rank, laid out like Akasha's: the board's team, a
+    top-% pill and the board's short name, then the rank
+    """
+    team = board.get("team") or []
+    face = font(PILL_FONT, True)
+    top_text = f"TOP {_top_share(board)}%"
     label = " ".join(p for p in (board["name"], board.get("variant")) if p).upper()
-    face = font(22, True)
-    # The board name goes beside the top-% pill, or under it when too long
-    top_w = text_width(top_text, face) + 28
-    beside = RANK_X1 - 14 - (RANK_X0 + 14 + top_w + 8) - 28
-    wrap = bool(label) and text_width(label, face) > beside
-    height = (96 if team else 0) + 112 + (48 if wrap else 0)
-    panel(card, (RANK_X0, y, RANK_X1, y + height))
-    cy = y + 14
+    room = RANK_MAX_W - 24 - 22
+    top_w = text_width(top_text, face) + 22
+    label_w = text_width(label, face) + 22 if label else 0
+    pills_w = top_w + (6 + label_w if label else 0)
+    wrap = pills_w > RANK_MAX_W - 24
+    # A long board name wraps onto more pill lines at word breaks, never cut
+    lines = []
+    for word in label.split():
+        if lines and text_width(f"{lines[-1]} {word}", face) <= room:
+            lines[-1] += f" {word}"
+        else:
+            lines.append(word)
+    rank, out = f"{board['rank']:,}", f"/{board['out']:,}"
+    rface, oface = font(28, True), font(22)
+    rank_w = text_width(rank, rface) + text_width(out, oface)
+    team_w = TILE * 4 + TILE_GAP * 3 if team else 0
+    line_ws = [text_width(line, face) + 22 for line in lines]
+    inner = max(team_w, max([top_w, *line_ws]) if wrap else pills_w, rank_w)
+    width = min(inner, RANK_MAX_W - 24) + 24
+    height = 10 + (TILE + 12 if team else 0) + 30 + (36 * len(lines) if wrap else 0)
+    height += 8 + 34 + 6
+    x0, y0 = RANK_RIGHT - width, RANK_BOTTOM - height
+    centre = x0 + width / 2
+    panel(card, (x0, y0, RANK_RIGHT, RANK_BOTTOM), radius=16)
+
+    cy = y0 + 10
     if team:
-        size, gap = 62, 10
-        x = RANK_X0 + (RANK_X1 - RANK_X0 - (size * 4 + gap * 3)) // 2
+        tx = centre - team_w / 2
         for i, mate in enumerate(team[:4]):
-            bx = x + i * (size + gap)
-            draw.rounded_rectangle(
-                (bx, cy, bx + size, cy + size), 12, fill=colour + (200,)
-            )
-            if not mate.get("icon"):
-                # A flex slot: any character fits
-                face = font(30, True)
-                draw.text(
-                    (bx + size / 2 - text_width("?", face) / 2, cy + 12),
-                    "?",
-                    font=face,
-                    fill=FAINT,
+            bx = tx + i * (TILE + TILE_GAP)
+            box = (bx, cy, bx + TILE, cy + TILE)
+            # Each tile in its own character's (or flex slot's) element
+            element = AKASHA_ELEMENTS.get(mate.get("element") or "", "")
+            tile = ELEMENT_COLOURS.get(element, colour)
+            draw.rounded_rectangle(box, 10, fill=tile + (220,))
+            if mate.get("icon"):
+                paste_fit(card, art.get(f"team{i}"), tuple(map(int, box)))
+                paste_fit(
+                    card,
+                    art.get(f"team_extra{i}"),
+                    (
+                        int(bx - 4),
+                        int(cy + TILE - 20),
+                        int(bx + 20),
+                        int(cy + TILE + 4),
+                    ),
                 )
-                continue
-            paste_fit(card, art.get(f"team{i}"), (bx, cy, bx + size, cy + size))
-            paste_fit(
-                card,
-                art.get(f"team_extra{i}"),
-                (bx - 4, cy + size - 24, bx + 26, cy + size + 6),
-            )
+            else:
+                # A flex slot: any character of this element
+                pad = TILE * 0.2
+                paste_fit(
+                    card,
+                    art.get(f"team{i}"),
+                    (
+                        int(bx + pad),
+                        int(cy + pad),
+                        int(bx + TILE - pad),
+                        int(cy + TILE - pad),
+                    ),
+                )
             cons = mate.get("constellation")
             if cons:
-                face = font(18, True)
                 draw.text(
-                    (bx + size - 14, cy + 2),
+                    (bx + TILE - 11, cy + 1),
                     str(cons),
-                    font=face,
+                    font=font(15, True),
                     fill=WHITE,
                     **OUTLINE,
                 )
-        cy += size + 20
+        cy += TILE + 12
 
     light = tuple(min(255, c + 70) for c in colour) + (230,)
     dark = (20, 20, 30, 255)
-    x = _pill(card, draw, RANK_X0 + 14, cy, top_text, light, dark)
-    if label:
-        if wrap:
-            cy += 48
-            x = RANK_X0 + 6
-        room = RANK_X1 - 14 - (x + 8) - 28
-        while label and text_width(label, face) > room:
-            label = label[:-2].rstrip(" ,") + "…"
-        _pill(card, draw, x + 8, cy, label, light, dark)
-    cy += 50
+    if wrap:
+        _pill(card, draw, centre - top_w / 2, cy, top_text, light, dark)
+        for line, line_w in zip(lines, line_ws):
+            cy += 36
+            _pill(card, draw, centre - line_w / 2, cy, line, light, dark)
+    else:
+        x = _pill(card, draw, centre - pills_w / 2, cy, top_text, light, dark)
+        if label:
+            _pill(card, draw, x + 6, cy, label, light, dark)
+    cy += 38
 
-    rank, out = f"{board['rank']:,}", f"/{board['out']:,}"
-    rface, oface = font(34, True), font(26)
-    width = text_width(rank, rface) + text_width(out, oface)
-    rx = (RANK_X0 + RANK_X1 - width) / 2
+    rx = centre - rank_w / 2
     draw.text((rx, cy), rank, font=rface, fill=WHITE)
-    draw.text((rx + text_width(rank, rface), cy + 7), out, font=oface, fill=FAINT)
-    return y + height
+    draw.text((rx + text_width(rank, rface), cy + 6), out, font=oface, fill=FAINT)
 
 
+@scaled
 def _draw_build(spec: dict, art: dict) -> bytes:
     colour = spec["colour"]
-    card = Image.new("RGB", (W, H), colour)
-    draw = ImageDraw.Draw(card, "RGBA")
+    card, draw = new_card((W, H), colour)
     _background(card, art, colour)
 
-    # Stats, top left, with the leaderboard rank under them as in the
-    # EnkaCard fork
+    # Stats, top left
     rows = spec["stats"][:10]
     stats_bottom = 32 + 46 * len(rows)
     panel(card, (16, 16, 436, stats_bottom))
@@ -487,13 +598,14 @@ def _draw_build(spec: dict, art: dict) -> bytes:
         y = 28 + 46 * i
         draw.text((36, y), name, font=fit_font(name, 24, 250), fill=SOFT)
         draw.text((416 - text_width(value, bold), y), value, font=bold, fill=WHITE)
-    if spec.get("leaderboard"):
-        _draw_rank(card, draw, spec["leaderboard"], art, colour, stats_bottom + 12)
 
     # Constellations / eidolons / mindscapes down the left edge
     for i, item in enumerate(spec["column"][:6]):
         y = 520 + i * 104
         _circle_item(card, draw, (24, y, 112, y + 88), item, colour, art)
+
+    if spec.get("leaderboard"):
+        _draw_rank(card, draw, spec["leaderboard"], art, colour)
 
     # Name, level line and rarity, right-aligned over the art
     name = spec["name"]
@@ -685,15 +797,27 @@ def _short_stat(name: str) -> str:
     )
 
 
-def _subs(stats, rolls: bool = False) -> list[tuple[str, bool]]:
+def _subs(stats, rolls: list[int] | None = None) -> list[tuple[str, bool]]:
+    """Substat lines, each with "+N" for the upgrades that went into it"""
     subs = []
-    for stat in stats:
+    for i, stat in enumerate(stats):
         text = f"{_short_stat(stat.name)} {stat.formatted_value}"
-        extra = (getattr(stat, "roll_times", 1) or 1) - 1
-        if rolls and extra > 0:
-            text += f" +{extra}"
+        if rolls and i < len(rolls) and rolls[i] > 1:
+            text += f" +{rolls[i] - 1}"
         subs.append((text, stat.name in ("CRIT Rate", "CRIT DMG")))
     return subs
+
+
+def _gi_rolls(artifact) -> list[int]:
+    """
+    How many times each Genshin substat rolled, in substat order: each roll
+    id is a substat's id ×10 plus its roll tier, listed in the order the
+    substats were added
+    """
+    counts = {}
+    for roll in artifact.sub_stat_ids or []:
+        counts[roll // 10] = counts.get(roll // 10, 0) + 1
+    return list(counts.values())
 
 
 def _element(value) -> str:
@@ -761,7 +885,7 @@ def gi_build(character, owner: str) -> tuple[dict, dict]:
                 "stars": artifact.rarity,
                 "main_name": artifact.main_stat.name,
                 "main_value": artifact.main_stat.formatted_value,
-                "subs": _subs(artifact.sub_stats),
+                "subs": _subs(artifact.sub_stats, _gi_rolls(artifact)),
                 "cv": crit_value(stats),
             }
         )
@@ -836,7 +960,9 @@ def hsr_build(character, owner: str) -> tuple[dict, dict]:
                 "stars": relic.rarity,
                 "main_name": relic.main_stat.name,
                 "main_value": relic.main_stat.formatted_value,
-                "subs": _subs(relic.sub_stats),
+                "subs": _subs(
+                    relic.sub_stats, [a.cnt for a in relic.sub_affix_list or []]
+                ),
                 "cv": crit_value([relic.main_stat, *relic.sub_stats]),
             }
         )
@@ -963,7 +1089,9 @@ def zzz_build(agent, owner: str, disc_icons: dict) -> tuple[dict, dict]:
                 "rank": disc.rarity,
                 "main_name": disc.main_stat.name,
                 "main_value": disc.main_stat.formatted_value,
-                "subs": _subs(disc.sub_stats, rolls=True),
+                "subs": _subs(
+                    disc.sub_stats, [s.roll_times or 1 for s in disc.sub_stats]
+                ),
                 "cv": crit_value([disc.main_stat, *disc.sub_stats]),
             }
         )
@@ -1130,6 +1258,7 @@ async def akasha_team(character_id: int, calculation: str) -> list[dict]:
         team.append(
             {
                 "icon": character.get("icon"),
+                "element": character.get("element"),
                 "constellation": character.get("constellation"),
                 "extra": extra,
             }
@@ -1175,8 +1304,13 @@ async def interknot_ranks(uid) -> dict:
     return ranks
 
 
-async def build_card(game: str, character, owner: str, uid=None) -> bytes:
-    """The build card for a showcase character of game (gi, hsr or zzz)"""
+async def build_card(
+    game: str, character, owner: str, uid=None, scale: int = 1
+) -> bytes:
+    """
+    The build card for a showcase character of game (gi, hsr or zzz), drawn
+    at scale times 1500×1180
+    """
     if game == "gi":
         urls, spec = gi_build(character, owner)
         board = (await akasha_ranks(uid)).get(character.id) if uid else None
@@ -1184,7 +1318,13 @@ async def build_card(game: str, character, owner: str, uid=None) -> bytes:
             team = await akasha_team(character.id, board["calculation"])
             spec["leaderboard"] = {**board, "team": team}
             for i, mate in enumerate(team):
-                urls[f"team{i}"] = mate["icon"]
+                element = AKASHA_ELEMENTS.get(mate.get("element") or "", "")
+                urls[f"team{i}"] = mate["icon"] or (
+                    # Enka has no Cryo one; Amber has all seven
+                    f"{AMBER_UI}UI_Buff_Element_{element}.png"
+                    if element
+                    else None
+                )
                 urls[f"team_extra{i}"] = mate["extra"]
     elif game == "hsr":
         urls, spec = hsr_build(character, owner)
@@ -1196,7 +1336,7 @@ async def build_card(game: str, character, owner: str, uid=None) -> bytes:
     art = await fetch_images(urls)
     if art.get("splash") is None:
         art["splash"] = art.get("splash_fallback")
-    return await sync_to_async(_draw_build, spec, art)
+    return await sync_to_async(_draw_build, spec, art, scale=scale)
 
 
 # ------------------------------------------------------------- profile card
@@ -1235,24 +1375,24 @@ def _tile(card, draw, box, tile: dict, art):
         draw.text((tx, y0 + 94), tile["extra"], font=font(22), fill=SOFT)
 
 
+@scaled
 def _draw_profile(spec: dict, art: dict) -> bytes:
     characters = spec["characters"]
     rows = -(-len(characters) // 4)
     height = 640 + rows * 170 + (30 if rows else 0)
-    card = Image.new("RGB", (PW, height), (24, 26, 36))
-    draw = ImageDraw.Draw(card, "RGBA")
+    card, draw = new_card((PW, height), (24, 26, 36))
 
     banner = art.get("banner")
     if banner is not None:
         # Fill the header; very wide namecards (ZZZ's) are cropped to the
         # middle
-        scale = max(PW / banner.width, 420 / banner.height)
+        scale = max(px(PW) / banner.width, px(420) / banner.height)
         banner = banner.resize(
             (int(banner.width * scale), int(banner.height * scale)),
             Image.Resampling.LANCZOS,
         )
-        left = (banner.width - PW) // 2
-        put(card, banner.crop((left, 0, left + PW, 420)))
+        left = (banner.width - px(PW)) // 2
+        put(card, banner.crop((left, 0, left + px(PW), px(420))))
     elif spec.get("banner_colour"):
         put(
             card,
@@ -1292,7 +1432,7 @@ def _draw_profile(spec: dict, art: dict) -> bytes:
         draw.text((40, 510), "Showcase", font=font(30, True), fill=WHITE)
         draw.text(
             (210, 516),
-            "Pick one from the poll, or add its number to the command",
+            "Add -c to pick characters for build cards, or a number for one",
             font=font(22),
             fill=FAINT,
         )
@@ -1488,8 +1628,10 @@ def _zzz_profile(player, agents, uid_text, medal_icons: dict) -> tuple[dict, dic
     return urls, spec
 
 
-async def profile_card(game: str, player, characters: list, uid_text: str) -> bytes:
-    """A player's summary card with their showcase characters"""
+async def profile_card(
+    game: str, player, characters: list, uid_text: str, scale: int = 1
+) -> bytes:
+    """A player's summary card with their showcase characters, at scale"""
     if game == "gi":
         urls, spec = _gi_profile(player, characters, uid_text)
     elif game == "hsr":
@@ -1504,4 +1646,4 @@ async def profile_card(game: str, player, characters: list, uid_text: str) -> by
         *(c["name"] for c in spec["characters"]),
     )
     art = await fetch_images(urls)
-    return await sync_to_async(_draw_profile, spec, art)
+    return await sync_to_async(_draw_profile, spec, art, scale=scale)
