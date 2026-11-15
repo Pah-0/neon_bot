@@ -474,9 +474,16 @@ async def _gi_character(session, entry) -> tuple:
     )
     caption += f"{stars(data['rank'])}\n\n"
     caption += f"*Element:* {element}\n"
-    caption += f"*Weapon:* {types.get(data['weaponType'], data['weaponType'])}\n"
+    caption += f"*Weapon:* {
+        types.get(
+            data['weaponType'],
+            data['weaponType'])}\n"
     if region or affiliation:
-        caption += f"*Region:* {' · '.join(x for x in (region, affiliation) if x)}\n"
+        caption += f"*Region:* {
+            ' · '.join(
+                x for x in (
+                    region,
+                    affiliation) if x)}\n"
     if data.get("specialProp"):
         caption += (
             f"*Ascension stat:* {props.get(data['specialProp'], data['specialProp'])}\n"
@@ -484,7 +491,12 @@ async def _gi_character(session, entry) -> tuple:
     if fetter.get("constellation"):
         caption += f"*Constellation:* {fetter['constellation']}\n"
     if month:
-        caption += f"*Birthday:* {time.strftime('%B', time.strptime(str(month), '%m'))} {day}\n"
+        caption += f"*Birthday:* {
+            time.strftime(
+                '%B',
+                time.strptime(
+                    str(month),
+                    '%m'))} {day}\n"
     if fetter.get("detail"):
         caption += f"> {short(fetter['detail'])}\n"
 
@@ -541,13 +553,17 @@ async def _gi_weapon(session, entry) -> tuple:
         else:
             name = props.get(prop["propType"], prop["propType"])
         if prop["propType"] == "FIGHT_PROP_BASE_ATTACK":
-            caption += f"*{name}:* {round(base)} ➜ {round(top)} _(Lv. {max_level})_\n"
+            caption += f"*{name}:* {
+                round(base)} ➜ {
+                round(top)} _(Lv. {max_level})_\n"
         elif base < 1:
             caption += (
                 f"*{name}:* {base * 100:.1f}% ➜ {top * 100:.1f}% _(Lv. {max_level})_\n"
             )
         else:
-            caption += f"*{name}:* {round(base)} ➜ {round(top)} _(Lv. {max_level})_\n"
+            caption += f"*{name}:* {
+                round(base)} ➜ {
+                round(top)} _(Lv. {max_level})_\n"
     if data.get("description"):
         caption += f"> {short(data['description'])}\n"
     for affix in (data.get("affix") or {}).values():
@@ -568,7 +584,8 @@ async def _gi_set(session, entry) -> tuple:
     pieces = ("1-Pc",) if len(affixes) == 1 else ("2-Pc", "4-Pc")
     for piece, text in zip(pieces, affixes):
         caption += f"*{piece}:* {text}\n"
-    # Flower, plume, sands, goblet, circlet; sets with only a circlet keep just that
+    # Flower, plume, sands, goblet, circlet; sets with only a circlet keep
+    # just that
     urls = [
         f"{GI_ASSETS}reliquary/UI_RelicIcon_{entry['id']}_{n}.png"
         for n in (4, 2, 5, 1, 3)
@@ -614,7 +631,11 @@ async def _hsr_character(session, entry) -> tuple:
             for _, values in sorted(params.items(), key=lambda p: int(p[0]))
         ]
         kind = f" _({skill['type']})_" if skill.get("type") else ""
-        return f"*{skill['name']}*{kind}\n{fill_params(skill.get('description'), top)}"
+        return f"*{
+            skill['name']}*{kind}\n{
+            fill_params(
+                skill.get('description'),
+                top)}"
 
     sections = {
         "t": "\n\n".join(skill_text(s) for s in skills),
@@ -635,12 +656,18 @@ async def _hsr_weapon(session, entry) -> tuple:
     top = data["upgrade"][-1]
     level = top.get("maxLevel", 80)
     base, add = top["skillBase"], top["skillAdd"]
-    stat = lambda k: round(
-        base.get(f"{k}Base", 0) + add.get(f"{k}Add", 0) * (level - 1)
-    )  # noqa: E731
+
+    def stat(k):
+        return round(
+            base.get(f"{k}Base", 0) + add.get(f"{k}Add", 0) * (level - 1)
+        )  # noqa: E731
+
     caption = f"*{entry['name']}*\n{stars(data['rank'])}\n\n"
     caption += f"*Path:* {data['types']['pathType']['name']}\n"
-    caption += f"*Lv. {level}:* HP {stat('hP')} · ATK {stat('attack')} · DEF {stat('defence')}\n"
+    caption += f"*Lv. {level}:* HP {
+        stat('hP')} · ATK {
+        stat('attack')} · DEF {
+            stat('defence')}\n"
     skill = data.get("skill") or {}
     if skill.get("name"):
         params = skill.get("params") or {}
@@ -677,7 +704,10 @@ async def _hsr_set(session, entry) -> tuple:
                 (skill.get("params") or {}).items(), key=lambda p: int(p[0])
             )
         ]
-        caption += f"*{pieces}-Pc:* {fill_params(skill.get('description'), params)}\n"
+        caption += f"*{pieces}-Pc:* {
+            fill_params(
+                skill.get('description'),
+                params)}\n"
     pieces = [
         p.get("icon") for p in (data.get("suite") or {}).values() if p.get("icon")
     ]
@@ -693,7 +723,10 @@ async def _zzz_character(session, entry) -> tuple:
         session, f"{ZZZ_DATA}zzz/{version}/en/character/{entry['id']}.json"
     )
     partner = data.get("partner_info") or {}
-    first = lambda d: next(iter((d or {}).values()), "")  # noqa: E731
+
+    def first(d):
+        return next(iter((d or {}).values()), "")  # noqa: E731
+
     rank = ZZZ_RANKS.get(data.get("rarity"), "")
     full_name = partner.get("full_name")
     caption = (
@@ -702,7 +735,10 @@ async def _zzz_character(session, entry) -> tuple:
         + "\n"
     )
     caption += f"*Rank {rank}*\n\n" if rank else "\n"
-    caption += f"*Attribute:* {first(data.get('special_element_type')) or first(data.get('element_type'))}\n"
+    caption += f"*Attribute:* {
+        first(
+            data.get('special_element_type')) or first(
+            data.get('element_type'))}\n"
     caption += f"*Specialty:* {first(data.get('weapon_type'))}\n"
     if data.get("hit_type"):
         caption += f"*Attack type:* {first(data['hit_type'])}\n"
