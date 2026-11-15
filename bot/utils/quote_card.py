@@ -12,9 +12,8 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from .bot_utils import sync_to_async
 from .card_text import draw_rich, load_emojis, profile_picture, rich_width, wrap
-from .rank_card import fit_rich
 from .hoyo_cards import ensure_fonts, paste_fit
-from .rank_card import avatar_fallback
+from .rank_card import avatar_fallback, fit_rich
 
 AVATAR = 84
 GAP = 16
