@@ -249,9 +249,8 @@ async def manage_farm_chat(event, args, client):
                 done.append("already added")
             else:
                 chats[chat] = region
-                done.append(
-                    f"set to get the farm schedule at the {REGION_NAMES[region]} server's reset"
-                )
+                done.append(f"set to get the farm schedule at the {
+                        REGION_NAMES[region]} server's reset")
         if chat not in chats:
             return await event.reply("*Given chat was never added!*")
         if flags.rm:

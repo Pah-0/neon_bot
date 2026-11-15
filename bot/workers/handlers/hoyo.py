@@ -1,5 +1,5 @@
-import re
 import asyncio
+import re
 from inspect import getdoc
 
 from bot.config import bot
