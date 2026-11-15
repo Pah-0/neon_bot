@@ -14,6 +14,30 @@ from .log_utils import log
 
 # Written by .update -pr and update.py; see update.py
 PR_STATE_FILE = Path(".pr_test")
+# update/restart commands already acted on; message ids come back after a
+# restart, and the in-memory duplicate check is empty then
+HANDLED_RESTARTS_FILE = Path(".handled_restarts")
+
+
+def restart_already_handled(chat_id: str, msg_id: str) -> bool:
+    """
+    True if this update/restart command message was already acted on;
+    otherwise it's recorded (the last 50 are kept) and False is returned
+    """
+    key = f"{chat_id}:{msg_id}"
+    try:
+        handled = HANDLED_RESTARTS_FILE.read_text().split()
+    except OSError:
+        handled = []
+    if key in handled:
+        return True
+    handled = [*handled, key][-50:]
+    tmp = HANDLED_RESTARTS_FILE.with_suffix(".tmp")
+    tmp.write_text("\n".join(handled))
+    tmp.replace(HANDLED_RESTARTS_FILE)
+    return False
+
+
 PR_RESULT_FILE = Path(".pr_result")
 
 dirs = ("comp/", "downloads/", "temp/", "trim/", "ytdl/")
