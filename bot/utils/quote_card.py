@@ -60,20 +60,27 @@ def strip_markup(text: str) -> str:
 
 def tail_points(bx0: float, by1: float) -> list[tuple[float, float]]:
     """
-    The bubble's tail: its left side sweeps down and out to a point by the
-    profile picture, its bottom runs straight back under the bubble
+    The bubble's tail, like WhatsApp's: its left side bends gradually out
+    from about 46px up to a point by the profile picture, and its bottom
+    runs straight back under the bubble
     """
-    top, tip, control = (bx0, by1 - 40), (bx0 - 16, by1), (bx0, by1 - 6)
+    p0, p1, p2, p3 = (
+        (bx0, by1 - 46),
+        (bx0, by1 - 18),
+        (bx0 - 6, by1 - 2),
+        (bx0 - 22, by1),
+    )
     curve = []
-    for i in range(17):
-        t = i / 16
+    for i in range(25):
+        t = i / 24
+        a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t**2, t**3
         curve.append(
             (
-                (1 - t) ** 2 * top[0] + 2 * (1 - t) * t * control[0] + t**2 * tip[0],
-                (1 - t) ** 2 * top[1] + 2 * (1 - t) * t * control[1] + t**2 * tip[1],
+                a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+                a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1],
             )
         )
-    return [*curve, (bx0 + 24, by1), (bx0 + 24, by1 - 40)]
+    return [*curve, (bx0 + 34, by1), (bx0 + 34, by1 - 46)]
 
 
 def _draw_name(card, draw, x, y, name, size, colour, tag, tag_size, emojis):
