@@ -64,6 +64,7 @@ async def hoyo_search(event, args, client):
             W-Engines) or sets (artifacts, relics, drive discs)
         -t : also send a character's talents, traces or skills
         -c : also send a character's constellations, eidolons or mindscapes
+        -full (or -f) : send both, like -t -c
         -lv <n> : the talent/trace/skill level for -t's scaling (default:
             10 for Genshin, each trace's cap for Star Rail, 12 for ZZZ)
     """
@@ -91,6 +92,8 @@ async def hoyo_search(event, args, client):
             kind = KIND_FLAGS[flag]
         elif flag in ("-t", "-c"):
             sections.append(flag[1])
+        elif flag in ("-full", "-f"):
+            sections += ["t", "c"]
         else:
             words.append(word)
     query = " ".join(words)
@@ -116,12 +119,16 @@ async def hoyo_search(event, args, client):
         image, caption, extra = await get_details(entry, level)
         if sections and entry["kind"] == "character":
             names = SECTIONS[entry["game"]]
-            caption += "\n_" + ", ".join(names[s] for s in sections) + " below._"
+            caption += (
+                "\n_"
+                + ", ".join(names[s] for s in dict.fromkeys(sections))
+                + " below._"
+            )
         if image:
             await event.reply_photo(image, caption)
         else:
             await event.reply(caption)
-        for section in sections:
+        for section in dict.fromkeys(sections):
             if not (text := extra.get(section)):
                 continue
             title = f"*{label(entry)}: {SECTIONS[entry['game']][section]}*\n\n"
