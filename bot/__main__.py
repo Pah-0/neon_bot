@@ -36,7 +36,7 @@ from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import farm, gift_codes
 from .workers.handlers.hoyo import hoyo_search
-from .workers.handlers.lookup import imdb, manga, novel
+from .workers.handlers.lookup import fic, imdb, manga, novel
 from .workers.handlers.manage import (
     auto_del_as_mute,
     ban,
@@ -314,6 +314,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("novel")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, novel, client)
+
+
+@bot.register("fic")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, fic, client)
 
 
 @bot.register("ban")

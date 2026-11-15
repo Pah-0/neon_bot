@@ -4,8 +4,10 @@ from inspect import getdoc
 from bot.config import bot
 from bot.utils.log_utils import logger
 from bot.utils.lookup_utils import (
+    ao3_info,
     manga_info,
     novel_info,
+    search_ao3,
     search_manga,
     search_novels,
     search_titles,
@@ -182,3 +184,22 @@ async def novel(event, args, client):
     if flags.wp:
         return await look_up(event, query, "story", search_wattpad, wattpad_info)
     await look_up(event, query, "novel", search_novels, novel_info)
+
+
+async def fic(event, args, client):
+    """
+    Looks up a fanfic on Archive of Our Own (AO3): fandom, rating, warnings,
+    relationships, words, chapters, kudos and summary. The most-kudosed works
+    matching the search are offered in a poll; a work's id or link goes
+    straight to it. AO3 refuses bots at times, so this may not always work.
+
+    Usage: fic <title, search words, work id or AO3 link>
+    """
+    if not await allowed(event):
+        return
+    query = (args or "").strip()
+    if not query:
+        return await event.reply(getdoc(fic))
+    work = re.search(r"archiveofourown\.org/works/(\d+)", query)
+    direct = work.group(1) if work else query if query.isdigit() else None
+    await look_up(event, query, "work", search_ao3, ao3_info, direct=direct)

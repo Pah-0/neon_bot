@@ -1,8 +1,9 @@
 """
 Lookups for manga and light novels (AniList), films and TV series
 (Cinemeta, Stremio's open metadata API, with IMDb ids and ratings), web
-novels (MangaUpdates' open API) and Wattpad stories (Wattpad's public API).
-None of them needs an API key.
+novels (MangaUpdates' open API), Wattpad stories (Wattpad's public API) and
+AO3 works (its search and work pages; AO3 has no API). None of them needs an
+API key. AO3 often refuses bots, so .fic may only work some of the time.
 """
 
 import html
@@ -10,6 +11,7 @@ import re
 from urllib.parse import quote
 
 import flag
+from bs4 import BeautifulSoup
 
 from bot import bot
 
@@ -17,6 +19,7 @@ ANILIST = "https://graphql.anilist.co"
 CINEMETA = "https://v3-cinemeta.strem.io"
 MANGAUPDATES = "https://api.mangaupdates.com/v1"
 WATTPAD = "https://www.wattpad.com/api/v3"
+AO3 = "https://archiveofourown.org"
 HEADERS = {"User-Agent": "neon_bot/1.0 (+https://github.com/Pah-0/neon_bot)"}
 WATTPAD_FIELDS = (
     "id,title,user(name),readCount,voteCount,numParts,completed,tags,cover,"
@@ -94,6 +97,19 @@ async def get_json(url: str, **kwargs):
     async with method(url, headers=HEADERS, **kwargs) as resp:
         resp.raise_for_status()
         return await resp.json(content_type=None)
+
+
+async def get_text(url: str, **kwargs) -> str:
+    async with bot.requests.get(url, headers=HEADERS, **kwargs) as resp:
+        # AO3 answers bots with 418 (or a Cloudflare 403/5xx) when it isn't
+        # letting them in
+        if url.startswith(AO3) and resp.status in (403, 418, 429, 503, 525):
+            raise Exception(
+                "AO3 isn't letting the bot in right now (it refuses bots at "
+                "times); try again later."
+            )
+        resp.raise_for_status()
+        return await resp.text()
 
 
 async def anilist(query: str, variables: dict) -> dict:
@@ -316,3 +332,123 @@ async def wattpad_info(story_id: str) -> tuple[str | None, str]:
         lines.append(f"\n{synopsis}")
     lines.append(f"\n{story['url']}")
     return story.get("cover"), "\n".join(lines)
+
+
+# Works seen in the last AO3 search, so picking one needs no second request
+_ao3_works: dict[str, dict] = {}
+
+
+def _tags(node, selector: str) -> list[str]:
+    return [a.get_text(strip=True) for a in node.select(selector)]
+
+
+def _ao3_stats(node) -> dict:
+    """The stats list (words, chapters, kudos…) as {class: text}"""
+    stats = {}
+    for dd in node.select("dl.stats dd"):
+        if dd.get("class"):
+            stats[dd["class"][0]] = dd.get_text(strip=True)
+    return stats
+
+
+def _ao3_blurb(blurb) -> dict:
+    """A work from a search result's blurb"""
+    heading = blurb.select_one("h4.heading")
+    title = heading.select_one("a[href^='/works/']")
+    rating = blurb.select_one("ul.required-tags span.rating")
+    summary = blurb.select_one("blockquote.summary")
+    return {
+        "id": title["href"].split("/")[2],
+        "title": title.get_text(strip=True),
+        "authors": _tags(heading, "a[rel=author]") or ["Anonymous"],
+        "fandoms": _tags(blurb, "h5.fandoms a.tag"),
+        "rating": rating.get("title") if rating else None,
+        "warnings": _tags(blurb, "li.warnings a.tag"),
+        "relationships": _tags(blurb, "li.relationships a.tag"),
+        "characters": _tags(blurb, "li.characters a.tag"),
+        "tags": _tags(blurb, "li.freeforms a.tag"),
+        "summary": summary.decode_contents() if summary else "",
+        "updated": (blurb.select_one("p.datetime") or blurb).get_text(strip=True),
+        "stats": _ao3_stats(blurb),
+    }
+
+
+def _ao3_page(page, work_id: str) -> dict:
+    """A work from its own page"""
+    meta = page.select_one("dl.work.meta")
+    if not meta:
+        raise Exception(f"AO3 has no work {work_id}, or it's for members only.")
+    summary = page.select_one("div.summary blockquote.userstuff")
+    byline = page.select_one("h3.byline")
+    stats = _ao3_stats(meta)
+    return {
+        "id": work_id,
+        "title": page.select_one("h2.title").get_text(strip=True),
+        "authors": (_tags(byline, "a[rel=author]") if byline else []) or ["Anonymous"],
+        "fandoms": _tags(meta, "dd.fandom a.tag"),
+        "rating": ", ".join(_tags(meta, "dd.rating a.tag")) or None,
+        "warnings": _tags(meta, "dd.warning a.tag"),
+        "relationships": _tags(meta, "dd.relationship a.tag"),
+        "characters": _tags(meta, "dd.character a.tag"),
+        "tags": _tags(meta, "dd.freeform a.tag"),
+        "summary": summary.decode_contents() if summary else "",
+        "updated": stats.get("status") or stats.get("published", ""),
+        "stats": stats,
+    }
+
+
+async def search_ao3(query: str) -> list[tuple[str, str]]:
+    """(AO3 work id, label) for the most-kudosed works matching query"""
+    text = await get_text(
+        f"{AO3}/works/search",
+        params={
+            "work_search[query]": query,
+            "work_search[sort_column]": "kudos_count",
+        },
+    )
+    page = BeautifulSoup(text, "lxml")
+    results = []
+    for blurb in page.select("li.work.blurb")[:MAX_RESULTS]:
+        try:
+            work = _ao3_blurb(blurb)
+        except (AttributeError, KeyError, TypeError, IndexError):
+            continue
+        _ao3_works[work["id"]] = work
+        results.append((work["id"], f"{work['title']} by {', '.join(work['authors'])}"))
+    return results
+
+
+async def ao3_info(work_id: str) -> tuple[None, str]:
+    """(None, caption) for an AO3 work; AO3 works have no cover"""
+    work = _ao3_works.pop(work_id, None)
+    if work is None:
+        # view_adult skips the adult content warning page
+        text = await get_text(f"{AO3}/works/{work_id}", params={"view_adult": "true"})
+        work = _ao3_page(BeautifulSoup(text, "lxml"), work_id)
+    stats = work["stats"]
+    lines = [f"*{work['title']}*", f"_by {', '.join(work['authors'])}_", ""]
+    for key, name, limit in (
+        ("fandoms", "FANDOM", 5),
+        ("warnings", "WARNINGS", 6),
+        ("relationships", "RELATIONSHIPS", 5),
+        ("characters", "CHARACTERS", 8),
+        ("tags", "TAGS", 10),
+    ):
+        if work[key]:
+            lines.append(f"➤ *{name}:* {', '.join(work[key][:limit])}")
+    if work["rating"]:
+        # Right after the fandom
+        lines.insert(4 if work["fandoms"] else 3, f"➤ *RATING:* {work['rating']}")
+    if chapters := stats.get("chapters"):
+        done, total = chapters.split("/")[0], chapters.split("/")[-1]
+        state = "complete" if done == total else "in progress"
+        lines.append(f"➤ *CHAPTERS:* {chapters} ({state})")
+    for key in ("words", "language", "kudos", "hits", "bookmarks"):
+        if stats.get(key):
+            lines.append(f"➤ *{key.upper()}:* {stats[key]}")
+    if work["updated"]:
+        lines.append(f"➤ *UPDATED:* {work['updated']}")
+    if synopsis := plain(work["summary"]):
+        lines.append(f"\n{synopsis}")
+    lines.append(f"\n{AO3}/works/{work_id}")
+    return None, "\n".join(lines)

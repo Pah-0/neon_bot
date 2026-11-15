@@ -32,7 +32,7 @@ async def getcmds(event, args, client):
 {pre}ping - *Check if bot is alive*
 {pre}afk - *Enable AFK mode*
 {pre}games - *Get game commands: Werewolf, Genshin, Star Rail and ZZZ*
-{pre}lookup - *Get commands to look up anime, manga, novels, films and TV*
+{pre}lookup - *Get commands to look up anime, manga, novels, fanfics, films and TV*
 {pre}fun - *Get fun commands*
 {pre}tools - *Get tools commands*
 {pre}roles - *Get commands for roles*
@@ -76,7 +76,7 @@ async def game_cmds(event, args, client):
 async def lookup_cmds(event, args, client):
     """
     List the commands for looking up anime, manga, light and web novels,
-    Wattpad stories, films and TV series.
+    Wattpad stories, AO3 fanfics, films and TV series.
 
     Arguments: None
     """
@@ -92,6 +92,7 @@ async def lookup_cmds(event, args, client):
 {pre}airing - *Fetch anime airing info from anilist*
 {pre}manga - *Fetch manga info from AniList (-ln for light novels)*
 {pre}novel - *Fetch web and light novel info from MangaUpdates (-wp for Wattpad stories)*
+{pre}fic - *Look up a fanfic on AO3 (when AO3 lets the bot in)*
 {pre}imdb - *Fetch film and TV series info with IMDb ratings (-movie or -tv to narrow it)*"""
         await event.reply(msg)
     except Exception as e:
