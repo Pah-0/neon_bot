@@ -62,7 +62,15 @@ from .workers.handlers.objection import insession, render_objection
 from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
 from .workers.handlers.quote import quote
 from .workers.handlers.role import roles
-from .workers.handlers.stuff import game_cmds, gc_info, getcmds, hello, lookup_cmds, manage_cmds, up
+from .workers.handlers.stuff import (
+    game_cmds,
+    gc_info,
+    getcmds,
+    hello,
+    lookup_cmds,
+    manage_cmds,
+    up,
+)
 from .workers.handlers.tldr import eli5, razor, tldr
 from .workers.handlers.translate import auto_translate, autotranslate
 from .workers.handlers.wa import gc_handler, handle_self_join, sticker_reply
