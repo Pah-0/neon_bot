@@ -263,9 +263,11 @@ def zzz_skill_table(rows: list, level: int) -> list[str]:
                 base, growth = values.get("main", 0), values.get("growth", 0)
             value = (base + growth * (level - 1)) / 100
             unit = "%" if values.get("format") == "%" else ""
-            lines.append(
-                f"• {row.get('name', '')}: {value:.1f}".rstrip("0").rstrip(".") + unit
-            )
+            lines.append(f"• {
+                    row.get(
+                        'name',
+                        '')}: {
+                    value:.1f}".rstrip("0").rstrip(".") + unit)
             break
     return lines
 
