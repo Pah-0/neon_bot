@@ -181,3 +181,6 @@ weights
 
 # enka.py's game asset cache
 .enka_py/
+
+# update/restart commands already acted on
+.handled_restarts

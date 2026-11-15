@@ -23,7 +23,12 @@ from bot.utils.msg_utils import (
     user_is_privileged,
     user_is_sudoer,
 )
-from bot.utils.os_utils import PR_STATE_FILE, re_x, updater
+from bot.utils.os_utils import (
+    PR_STATE_FILE,
+    re_x,
+    restart_already_handled,
+    updater,
+)
 from bot.utils.rss_utils import schedule_rss, scheduler
 from bot.utils.runtime import shutdown_services
 
@@ -38,6 +43,9 @@ async def restart_handler(event, args, client):
     if not user_is_owner(user):
         if not user_is_sudoer(user):
             return await event.react("🚫")
+    # The command can come back after the restart; act on it only once
+    if restart_already_handled(event.chat.id, event.id):
+        return
     try:
         rst = await event.reply("*Restarting Please Wait…*")
         message = f"{rst.chat.id}:{rst.id}:{rst.chat.server}"
@@ -61,6 +69,9 @@ async def update_handler(event, args, client):
     if not user_is_owner(user):
         if not user_is_sudoer(user):
             return await event.react("🚫")
+    # The command can come back after the restart; act on it only once
+    if restart_already_handled(event.chat.id, event.id):
+        return
     try:
         flag, _, pr = (args or "").strip().partition(" ")
         if flag and flag != "-pr":
