@@ -4,11 +4,12 @@ import datetime
 from bot import jid
 from bot.config import bot
 from bot.workers.auto.schedule import scheduler2
-from bot.workers.handlers.wa import get_ranking_msg
+from bot.workers.handlers.wa import get_ranking_data, get_ranking_msg
 
 from .bot_utils import same_month, same_week
 from .db_utils import save2db2
 from .log_utils import logger
+from .rank_card import ranking_card
 
 
 async def auto_rank():
@@ -49,17 +50,8 @@ async def auto_rank():
             if period == "monthly" and not weekly_window:
                 continue
 
-            msg = await get_ranking_msg(group, tag=True)
-            if not msg:
-                continue
-
             server = ranking.get("server")
-
-            await bot.client.send_message(
-                jid.build_jid(group, "g.us"),
-                msg,
-                mentions_are_lids=(server == 0),
-            )
+            await send_ranking(group, period, mentions_are_lids=(server == 0))
 
             await asyncio.sleep(3)
 
@@ -113,6 +105,27 @@ async def save_msg_ranking():
         await save2db2(bot.group_dict, "groups")
     except Exception:
         await logger(Exception)
+
+
+async def send_ranking(group, period, mentions_are_lids):
+    """The leaderboard card, captioned with the top ten tagged; text if drawing fails"""
+    chat = jid.build_jid(group, "g.us")
+    try:
+        data = await get_ranking_data(group)
+        if not data:
+            return
+        tags = "  ".join(f"{r['place']}. @{r['user']}" for r in data["rows"])
+        caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
+        await bot.client.send_image(
+            chat, await ranking_card(data), caption, mentions_are_lids=mentions_are_lids
+        )
+    except Exception:
+        await logger(Exception)
+        msg = await get_ranking_msg(group, tag=True)
+        if msg:
+            await bot.client.send_message(
+                chat, msg, mentions_are_lids=mentions_are_lids
+            )
 
 
 def update_users_rank(chat_id):

@@ -24,6 +24,7 @@ from urlextract import URLExtract
 from wand.image import Image as wand_image
 
 from bot import Message
+from bot import jid as wa_jid
 from bot.config import bot, conf
 from bot.fun.quips import enquip, enquip4
 from bot.fun.stickers import ran_stick
@@ -98,6 +99,7 @@ from bot.utils.msg_utils import (
 )
 from bot.utils.os_utils import enshell, s_remove, size_of
 from bot.utils.parse_td_utils import parse_reminder_time_hybrid
+from bot.utils.rank_card import ranking_card
 from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
@@ -147,7 +149,7 @@ async def tools(event, args, client):
             f"{' *(models: ' + ', '.join(UPSCALE_MODELS) + ')*' if conf.MODAL_UPSCALE_API else ''}{s}"
             f"{pre}batch_upscale - {'*Upscale replied album images* *(models: ' + ', '.join(UPSCALE_MODELS) + ')*' if conf.MODAL_UPSCALE_API else '_Currently not available!_'}{s}"
             f"{s}"
-            f"{pre}msg_ranking - *Get the group's message leaderboard*{s}"
+            f"{pre}msg_ranking - *Get the group's message leaderboard card (-f everyone, -text as text)*{s}"
             f"{pre}pin - *[Owner | Sudo | Admin] Pin a replied message*{s}"
             f"{pre}unpin - *[Owner | Sudo | Admin] Unpin a replied message*{s}"
             f"{pre}purge - *[Owner | Admin] Mass delete messages*{s}"
@@ -2120,9 +2122,10 @@ async def rec_msg_ranking(event, args, client):
 
 async def msg_ranking(event, args, client):
     """
-    Get this group's message leaderboard. Group only.
+    Get this group's message leaderboard as a card. Group only.
     Arguments:
-        -f / --full: show the full ranking
+        -f / --full: everyone, not just the top 10 (the card shows up to 30)
+        -text: the leaderboard as text instead
     """
     if not event.chat.is_group:
         return
@@ -2134,50 +2137,92 @@ async def msg_ranking(event, args, client):
             return await event.react("⛔")
     try:
         chat_id = event.chat.id
-        full = True if args and args in ("-f", "--full") else False
-        msg = await get_ranking_msg(chat_id, full=full)
-        if not msg:
+        flags = args.casefold().split() if args else []
+        full = "-f" in flags or "--full" in flags
+        if "-text" in flags:
+            msg = await get_ranking_msg(chat_id, full=full)
+            if not msg:
+                return await event.reply("Can't fetch ranking right now!")
+            return await event.reply(msg)
+        data = await get_ranking_data(chat_id, full=full)
+        if not data:
             return await event.reply("Can't fetch ranking right now!")
-        return await event.reply(msg)
+        await event.reply_photo(await ranking_card(data))
     except Exception:
         await logger(Exception)
+        await event.react("❌")
+
+
+PERIODS = {"weekly": "This week", "monthly": "This month"}
+
+
+async def get_ranking_data(chat_id, full=False):
+    """
+    The group's leaderboard: {group, period, total, members, server, rows:
+    [{user, jid, place, name, count, medals}]}, top 10 unless full
+    """
+    group = bot.group_dict.setdefault(chat_id, {})
+    msg_rank_dict = group.get("msg_ranking", {"total": 0})
+    server = "lid" if not msg_rank_dict.get("server") else "s.whatsapp.net"
+    counts = sorted(
+        (
+            (k, v)
+            for k, v in msg_rank_dict.items()
+            if isinstance(v, int) and k not in ("total", "server", "period")
+        ),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    if not counts:
+        return
+    rows = []
+    for place, (user, value) in enumerate(counts if full else counts[:10], start=1):
+        user_info = await get_user_info(user, server)
+        stats = group.get("msg_stats", {}).get(user, {})
+        rows.append(
+            {
+                "user": user,
+                "jid": wa_jid.build_jid(user, server),
+                "place": place,
+                "name": user_info.PushName or "Unknown",
+                "count": value,
+                "medals": {p: stats.get(p, 0) for p in (1, 2, 3) if stats.get(p)},
+            }
+        )
+    try:
+        info = await bot.client.get_group_info(wa_jid.build_jid(chat_id, "g.us"))
+        group_name = info.GroupName.Name
+    except Exception:
+        group_name = ""
+    return {
+        "group": group_name,
+        "period": PERIODS.get(msg_rank_dict.get("period"), ""),
+        "total": msg_rank_dict.get("total") or 0,
+        "members": len(counts),
+        "server": server,
+        "rows": rows,
+    }
 
 
 async def get_ranking_msg(chat_id, tag=False, full=False):
-    msg_rank_dict = bot.group_dict.setdefault(chat_id, {}).get(
-        "msg_ranking", {"total": 0}
-    )
-    i = 1
-    msg = ""
-    server = msg_rank_dict.get("server")
-    server = "lid" if not server else "s.whatsapp.net"
-    sorted_ms_rank_dict = dict(
-        sorted(
-            ((k, v) for k, v in msg_rank_dict.items() if isinstance(v, int)),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-    )
-
-    for user in list(sorted_ms_rank_dict.keys()):
-        if user in ("total", "server", "period"):
-            continue
-        value = sorted_ms_rank_dict[user]
-        user_info = await get_user_info(user, server)
-        msg += f"{i}. {(user_info.PushName or '👤 Unknown') if not tag else ('@' +
-                                                                            user)} · {human_format_num(value)}\n"
-        medals = get_medals(chat_id, user)
-        msg += f"    └{medals}\n" if medals else ""
-        i += 1
-        if i > 10 and not full:
-            break
-    if not msg:
+    data = await get_ranking_data(chat_id, full=full)
+    if not data:
         return
-    act_mem = len(msg_rank_dict.keys()) - 2
-    total_msg = msg_rank_dict.get("total")
-    return f"📈 *MESSAGE LEADERBOARD*\n{msg}\n👥 *Participants:* {
-        human_format_num(act_mem)}\n✉️ *Total messages:* {
-        human_format_num(total_msg)}"
+    msg = ""
+    for row in data["rows"]:
+        name = (
+            ("@" + row["user"])
+            if tag
+            else (row["name"] if row["name"] != "Unknown" else "👤 Unknown")
+        )
+        msg += f"{row['place']}. {name} · {human_format_num(row['count'])}\n"
+        medals = get_medals(chat_id, row["user"])
+        msg += f"    └{medals}\n" if medals else ""
+    return (
+        f"📈 *MESSAGE LEADERBOARD*\n{msg}\n👥 *Participants:* "
+        f"{human_format_num(data['members'])}\n✉️ *Total messages:* "
+        f"{human_format_num(data['total'])}"
+    )
 
 
 def get_medals(chat_id, user):

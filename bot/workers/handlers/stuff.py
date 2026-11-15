@@ -36,6 +36,7 @@ async def getcmds(event, args, client):
 {pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily)*
 {pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*
 {pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
+{pre}quote - *Reply to a message to turn it into a quote sticker (-img for a picture)*
 {pre}insession - *Start an Ace Attorney objection session*
 {pre}renderobj - *Render an objection session into a video*
 {pre}werewolf - *Play a game of Werewolf*
