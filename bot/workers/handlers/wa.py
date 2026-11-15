@@ -2189,9 +2189,14 @@ async def msg_ranking(event, args, client):
             return await event.react("⛔")
     try:
         chat_id = event.chat.id
-        flags = args.casefold().split() if args else []
-        full = "-f" in flags or "--full" in flags
-        if "-text" in flags:
+        flags = get_args(
+            ["-f", "store_true"],
+            ["--full", "store_true"],
+            ["-text", "store_true"],
+            to_parse=args or "",
+        )
+        full = flags.f or flags.full
+        if flags.text:
             msg = await get_ranking_msg(chat_id, full=full)
             if not msg:
                 return await event.reply("Can't fetch ranking right now!")

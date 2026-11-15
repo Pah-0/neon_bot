@@ -10,6 +10,7 @@ from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
     construct_msg_and_evt,
+    get_args,
     user_is_allowed,
     user_is_privileged,
 )
@@ -169,18 +170,29 @@ async def game_profile(event, args, game: str):
             return
         if not user_is_allowed(user):
             return await event.react("⛔")
-    words = args.split()
-    if words and words[0].casefold() in ("-set", "-unset"):
-        setting = words[0].casefold() == "-set"
-        uid = words[1] if setting and len(words) > 1 else ""
-        if setting and not (uid.isdigit() and len(uid) in info["uid_lengths"]):
+    flags, rest = get_args(
+        "-set",
+        ["-unset", "store_true"],
+        ["-hide", "store_true"],
+        # -h hides too after a UID; alone it's the bot's help
+        ["-h", "store_true"],
+        ["-c", "store_true"],
+        ["-2x", "store_true"],
+        to_parse=args,
+        get_unknown=True,
+    )
+    if flags.set is not None or flags.unset:
+        uid = flags.set or ""
+        if flags.set is not None and not (
+            uid.isdigit() and len(uid) in info["uid_lengths"]
+        ):
             return await event.reply(f"*Give a {info['name']} UID to save.*")
         return await save_uid(event, game, uid)
-    hide = any(w.casefold() in ("-hide", "-h") for w in words)
-    pick = any(w.casefold() == "-c" for w in words)
+    hide = flags.hide or flags.h
+    pick = flags.c
     # -2x draws the cards at twice the resolution
-    scale = 2 if any(w.casefold() == "-2x" for w in words) else 1
-    words = [w for w in words if w.casefold() not in ("-hide", "-h", "-c", "-2x")]
+    scale = 2 if getattr(flags, "2x") else 1
+    words = rest.split()
     if words and words[0].isdigit() and len(words[0]) in info["uid_lengths"]:
         uid, words = words[0], words[1:]
     else:

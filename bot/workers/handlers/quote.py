@@ -8,6 +8,7 @@ from bot.utils.log_utils import logger
 from bot.utils.msg_store import get_messages
 from bot.utils.msg_utils import (
     chat_is_allowed,
+    get_args,
     get_user_info,
     user_is_allowed,
     user_is_privileged,
@@ -38,7 +39,7 @@ async def quote(event, args, client):
     try:
         async with event.react("🎨"):
             png, name = await make_quote(event, replied)
-            if "-img" in (args or "").casefold().split():
+            if get_args(["-img", "store_true"], to_parse=args or "").img:
                 # A photo has no transparency; put the bubble on a chat-like
                 # backdrop
                 image = Image.open(io.BytesIO(png)).convert("RGBA")
