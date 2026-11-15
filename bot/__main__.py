@@ -58,8 +58,8 @@ from .workers.handlers.manage import (
 )
 from .workers.handlers.media_dl import youtube_reply
 from .workers.handlers.objection import insession, render_objection
-from .workers.handlers.quote import quote
 from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
+from .workers.handlers.quote import quote
 from .workers.handlers.role import roles
 from .workers.handlers.stuff import gc_info, getcmds, hello, up
 from .workers.handlers.tldr import eli5, razor, tldr

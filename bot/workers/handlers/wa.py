@@ -78,7 +78,6 @@ from bot.utils.msg_store import (
     get_messages_between,
     get_messages_by_album_id,
 )
-from bot.utils.rank_card import ranking_card
 from bot.utils.msg_utils import (
     chat_is_allowed,
     clean_reply,
@@ -100,6 +99,7 @@ from bot.utils.msg_utils import (
 )
 from bot.utils.os_utils import enshell, s_remove, size_of
 from bot.utils.parse_td_utils import parse_reminder_time_hybrid
+from bot.utils.rank_card import ranking_card
 from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
