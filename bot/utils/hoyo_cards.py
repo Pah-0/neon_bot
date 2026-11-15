@@ -33,6 +33,12 @@ FONTS = {
     "kr": "notosanskr/NotoSansKR%5Bwght%5D.ttf",
 }
 ENKA_UI = "https://enka.network/ui/"
+# Genshin's friendship (fetter) icon; neither Enka nor Amber hosts it
+FRIENDSHIP_ICON = (
+    "https://raw.githubusercontent.com/SnapHutaoRemasteringProject/"
+    "Snap.Hutao.Remastered/main/src/Snap.Hutao.Remastered/Snap.Hutao.Remastered/"
+    "Resource/Icon/UI_Icon_Fetter.png"
+)
 AMBER_UI = "https://gi.yatta.moe/assets/UI/"
 TIMEOUT = aiohttp.ClientTimeout(total=60)
 
@@ -624,8 +630,19 @@ def _draw_build(spec: dict, art: dict) -> bytes:
         friendship = str(spec["heart"])
         x -= text_width(friendship, face)
         draw.text((x, 486), friendship, font=face, fill=WHITE, **OUTLINE)
-        heart(draw, x - 20, 504, 11, fill=(255, 140, 160, 255))
-        x -= 36
+        icon = art.get("friendship")
+        if icon is not None:
+            # The game's friendship icon, with a soft shadow like the text's
+            shadow = icon.copy()
+            shadow.putalpha(icon.getchannel("A").point(lambda a: a * 0.5))
+            black = Image.new("RGBA", icon.size, (0, 0, 0, 0))
+            black.putalpha(shadow.getchannel("A"))
+            paste_fit(card, black, (x - 37, 491, x - 7, 519))
+            paste_fit(card, icon, (x - 38, 489, x - 8, 517))
+            x -= 46
+        else:
+            heart(draw, x - 20, 504, 11, fill=(255, 140, 160, 255))
+            x -= 36
     line = spec["line"]
     draw.text((x - text_width(line, face), 486), line, font=face, fill=WHITE, **OUTLINE)
     if spec.get("stars"):
@@ -867,6 +884,7 @@ def gi_build(character, owner: str) -> tuple[dict, dict]:
     urls = {
         "splash": splash or character.icon.gacha,
         "splash_fallback": character.icon.front,
+        "friendship": FRIENDSHIP_ICON,
         "weapon": character.weapon.icon,
     }
     by_slot = {_element(a.equip_type): a for a in character.artifacts}
