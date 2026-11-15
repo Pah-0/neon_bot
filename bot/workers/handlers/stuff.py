@@ -15,8 +15,8 @@ from bot.utils.msg_utils import (
 async def getcmds(event, args, client):
     """
     List the bot's main commands.
-    Tools, fun, role and management commands are listed by tools, fun, roles
-    and manage.
+    Game, tools, fun, role and management commands are listed by games,
+    tools, fun, roles and manage.
 
     Arguments: None
     """
@@ -33,18 +33,43 @@ async def getcmds(event, args, client):
 {pre}afk - *Enable AFK mode*
 {pre}anime - *Fetch anime info from anilist*
 {pre}airing - *Fetch anime airing info from anilist*
-{pre}gicodes - *Get Genshin Impact redeem codes ([Owner | Sudo | Admin] -add/-rm/-get chats to auto-post new ones, -pin/-unpin to pin them for a day)*
-{pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily, -pin/-unpin to pin it for a day)*
-{pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*
-{pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
 {pre}quote - *Reply to a message to turn it into a quote sticker (-img for a picture)*
 {pre}insession - *Start an Ace Attorney objection session*
 {pre}renderobj - *Render an objection session into a video*
 {pre}werewolf - *Play a game of Werewolf*
+{pre}games - *Get Genshin, Star Rail and ZZZ commands*
 {pre}fun - *Get fun commands*
 {pre}tools - *Get tools commands*
 {pre}roles - *Get commands for roles*
 {pre}manage - *Get bot and group management commands*"""
+        await event.reply(msg)
+    except Exception as e:
+        await logger(Exception)
+        return await event.reply(f"*Error:*\n{e}")
+
+
+async def game_cmds(event, args, client):
+    """
+    List the commands for Genshin Impact, Honkai: Star Rail and Zenless Zone
+    Zero.
+
+    Arguments: None
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        pre = conf.CMD_PREFIX
+        msg = f"""*Genshin Impact:*
+{pre}gicodes - *Get Genshin Impact redeem codes ([Owner | Sudo | Admin] -add/-rm/-get chats to auto-post new ones, -pin/-unpin to pin them for a day)*
+{pre}farm - *Genshin domains open today, or on a given day ([Owner | Sudo | Admin] -add/-rm/-get chats to post it daily, -pin/-unpin to pin it for a day)*
+
+*Genshin, Star Rail & ZZZ:*
+{pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
+{pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*"""
         await event.reply(msg)
     except Exception as e:
         await logger(Exception)
