@@ -35,6 +35,7 @@ from .workers.handlers.dev import bash, eval_message, get_logs
 from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import farm, gift_codes
+from .workers.handlers.hoyo import hoyo_search
 from .workers.handlers.manage import (
     auto_del_as_mute,
     ban,
@@ -237,6 +238,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("farm")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, farm, client)
+
+
+@bot.register("search")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, hoyo_search, client)
 
 
 @bot.register("anime")

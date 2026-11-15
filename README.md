@@ -49,6 +49,7 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 - **RSS Feeds**: Subscribe to RSS feeds and receive updates in your chats.
 - **Genshin Codes**: Get the current Genshin Impact redeem codes, and have new ones posted to chats automatically.
 - **Genshin Farm Schedule**: See which domains are open each day and the characters and weapons they cover (data from Project Amber), optionally posted daily.
+- **Hoyo Search**: Look up characters, weapons and sets from Genshin Impact, Honkai: Star Rail and Zenless Zone Zero (data from Project Amber, Project Yatta and Hakushin).
 - **URL Sanitization**: Strip tracking parameters from links.
 - **Auto Translation**: Messages that aren't in a chat's set language get a translated reply, kept up to date when the message is edited (language detected locally with py3langid, translated with Google Translate).
 - **Random Choice**: Let the bot pick from a list of options.
@@ -67,6 +68,7 @@ The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds`, `.t
 - `.afk [reason]`: Mark yourself as AFK.
 - `.gicodes [-add/-rm <chat> | -get]`: Get the current Genshin Impact redeem codes; owner and sudo pick chats where new codes are posted automatically.
 - `.farm [day] [city] [asia|eu|na]`: See which Genshin talent and weapon domains are open today (or on a given day) and who they're for; `-add <chat> [region]` posts it to a chat at each daily reset.
+- `.search <name> [-gi|-hsr|-zzz] [-char|-weapon|-set] [-t] [-c]`: Look up a Genshin Impact, Honkai: Star Rail or Zenless Zone Zero character, weapon or set; `-t` adds talents/traces/skills and `-c` constellations/eidolons/mindscapes.
 
 ### Media & Tools
 - `.sticker`: Convert replied media to a sticker.
