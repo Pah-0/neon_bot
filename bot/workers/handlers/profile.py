@@ -15,8 +15,9 @@ from bot.utils.msg_utils import (
 )
 from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
 
-# A WhatsApp poll takes at most 12 options, as many as a showcase holds
-MAX_CHOICES = 12
+# A WhatsApp poll takes at most 12 options; one is the Done button
+MAX_CHOICES = 11
+DONE = "✅ Done"
 GAMES = {
     "gi": {
         "name": "Genshin",
@@ -81,15 +82,28 @@ def find_character(characters: list, choice: str):
     return None
 
 
-async def pick_character(event, characters: list):
-    """Sends a poll of the showcase; the chosen character, or None"""
+async def pick_characters(event, characters: list) -> list:
+    """
+    Sends a poll of the showcase where several can be ticked, counted once
+    Done is ticked too; the chosen characters in showcase order, or []
+    """
     options = {
         i: [f"{i + 1}. {c.name} (Lv. {c.level})", c.name]
         for i, c in enumerate(characters[:MAX_CHOICES])
     }
-    title = f"{event.from_user.name}, pick a character for their build card."
+    options["done"] = [DONE]
+    title = (
+        f"{event.from_user.name}, tick the characters you want build cards for, "
+        f"then {DONE}."
+    )
     poll_msg_, msg_ = await create_sudo_button(
-        title, options, event.chat.jid, event.from_user.id, 1, None, event.message
+        title,
+        options,
+        event.chat.jid,
+        event.from_user.id,
+        len(options),
+        DONE,
+        event.message,
     )
     poll_msg = construct_msg_and_evt(
         event.chat.id,
@@ -100,9 +114,11 @@ async def pick_character(event, characters: list):
         bot.client.me.JID.Server,
         poll_msg_,
     )
-    choice = await wait_for_button_response(msg_.ID)
+    chosen = await wait_for_button_response(msg_.ID)
     await poll_msg.delete()
-    return characters[choice[0]] if choice else None
+    return [
+        characters[i] for i in sorted(k for k in chosen or [] if isinstance(k, int))
+    ]
 
 
 async def save_uid(event, game: str, uid: str):
@@ -136,7 +152,8 @@ async def game_profile(event, args, game: str):
             return await event.reply(f"*Give a {info['name']} UID to save.*")
         return await save_uid(event, game, uid)
     hide = any(w.casefold() in ("-hide", "-h") for w in words)
-    words = [w for w in words if w.casefold() not in ("-hide", "-h")]
+    pick = any(w.casefold() == "-c" for w in words)
+    words = [w for w in words if w.casefold() not in ("-hide", "-h", "-c")]
     if words and words[0].isdigit() and len(words[0]) in info["uid_lengths"]:
         uid, words = words[0], words[1:]
     else:
@@ -175,27 +192,35 @@ async def game_profile(event, args, game: str):
                 await build_card(game, character, owner, uid)
             )
 
+        if pick:
+            if not characters:
+                await status.edit("*No characters are public in their showcase.*")
+                status = None
+                return
+            await status.delete()
+            status = None
+            # With one character there's nothing to pick
+            chosen = (
+                characters
+                if len(characters) == 1
+                else await pick_characters(event, characters)
+            )
+            for character in chosen:
+                status = await event.reply(f"*Drawing {character.name}'s card…*")
+                await event.reply_photo(await build_card(game, character, owner, uid))
+                await status.delete()
+                status = None
+            return
+
         await status.edit("*Drawing the profile card…*")
-        caption = f"*{
-            player.nickname}* · {
-            info['level']} {
-            player.level} · {uid_text}"
+        caption = f"*{player.nickname}* · {info['level']} {player.level} · {uid_text}"
         caption += (
-            "\nPick a character from the poll for their build card."
+            "\nAdd -c to pick characters for build cards, or a number or name for one."
             if characters
             else "\n_No characters are public in their showcase._"
         )
         card = await profile_card(game, player, characters, uid_text)
         await event.reply_photo(card, caption)
-        await status.delete()
-        status = None
-        if not characters:
-            return
-        character = await pick_character(event, characters)
-        if character is None:
-            return
-        status = await event.reply(f"*Drawing {character.name}'s card…*")
-        await event.reply_photo(await build_card(game, character, owner, uid))
     except Exception as e:
         await logger(Exception)
         await event.react("❌")
@@ -211,12 +236,14 @@ async def gi_profile(event, args, client):
     """
     Shows a Genshin Impact player's profile card from Enka.Network: Adventure
     Rank, Spiral Abyss, Imaginarium Theater and Stygian Onslaught progress, and
-    the characters in their in-game showcase. Pick one from the poll for its
-    build card (stats, weapon, artifacts with crit value).
+    the characters in their in-game showcase. Build cards show stats, weapon,
+    artifacts with crit value and roll counts, and the Akasha rank.
 
-    Usage: gi [uid] [character] [-hide]
+    Usage: gi [uid] [character] [-c] [-hide]
         uid: a Genshin UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
+        -c : pick characters for build cards from a poll (tick several, then
+            Done); with only one in the showcase, its card is sent straight away
         -hide : hide the UID on the cards
         -set <uid> : save your Genshin UID
         -unset : forget your saved Genshin UID
@@ -229,12 +256,14 @@ async def hsr_profile(event, args, client):
     """
     Shows a Honkai: Star Rail player's profile card from Enka.Network:
     Trailblaze and Equilibrium levels, achievements and collection, and the
-    characters in their in-game showcase. Pick one from the poll for its build
-    card (stats, light cone, relics with crit value, traces, eidolons).
+    characters in their in-game showcase. Build cards show stats, light cone,
+    relics with crit value and roll counts, traces and eidolons.
 
-    Usage: hsr [uid] [character] [-hide]
+    Usage: hsr [uid] [character] [-c] [-hide]
         uid: a Star Rail UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
+        -c : pick characters for build cards from a poll (tick several, then
+            Done); with only one in the showcase, its card is sent straight away
         -hide : hide the UID on the cards
         -set <uid> : save your Star Rail UID
         -unset : forget your saved Star Rail UID
@@ -247,13 +276,15 @@ async def zzz_profile(event, args, client):
     """
     Shows a Zenless Zone Zero player's profile card from Enka.Network:
     Inter-Knot level, title, Shiyu Defense, Simulated Battle Tower and Deadly
-    Assault medals, and the agents in their in-game showcase. Pick one from the
-    poll for its build card (stats, W-Engine, drive discs with crit value,
-    skills, mindscapes).
+    Assault medals, and the agents in their in-game showcase. Build cards show
+    stats, W-Engine, drive discs with crit value and roll counts, skills,
+    mindscapes and the Inter-Knot rank.
 
-    Usage: zzz [uid] [agent] [-hide]
+    Usage: zzz [uid] [agent] [-c] [-hide]
         uid: a ZZZ UID; leave it out to use the one you saved
         agent: a showcase number or name, to go straight to its build card
+        -c : pick agents for build cards from a poll (tick several, then
+            Done); with only one in the showcase, its card is sent straight away
         -hide : hide the UID on the cards
         -set <uid> : save your ZZZ UID
         -unset : forget your saved ZZZ UID

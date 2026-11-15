@@ -118,9 +118,10 @@ def clean(text: str | None) -> str:
 
 
 # A number, or numbers joined by slashes like 8/16/28%
-_number = re.compile(r"\d+(?:\.\d+)?%?(?:/\d+(?:\.\d+)?%?)*")
+_unit = r"(?:%|s(?![A-Za-z]))?"
+_number = re.compile(rf"\d+(?:\.\d+)?{_unit}(?:/\d+(?:\.\d+)?{_unit})*")
 # Numbers, words and the space or punctuation between them
-_token = re.compile(r"\d+(?:\.\d+)?%?(?:/\d+(?:\.\d+)?%?)*|\w+|\W+")
+_token = re.compile(rf"\d+(?:\.\d+)?{_unit}(?:/\d+(?:\.\d+)?{_unit})*|\w+|\W+")
 
 
 def merge_levels(texts: list[str]) -> str:
@@ -159,9 +160,13 @@ def merge_levels(texts: list[str]) -> str:
             # Genshin_bot's way: (8/16/28%)/(10/20/35%)/…
             base[i] = "*" + "/".join(f"({v})" for v in found) + "*"
             continue
-        percent = all(v.endswith("%") for v in found)
-        found = [v.rstrip("%") for v in found]
-        base[i] = f"*{'/'.join(found)}{'%' if percent else ''}*"
+        # One shared unit is written once, at the end: *4/3.5/3/2.5/2s*
+        unit = found[0][-1] if found[0][-1] in "%s" else ""
+        if unit and all(v.endswith(unit) for v in found):
+            found = [v[:-1] for v in found]
+        else:
+            unit = ""
+        base[i] = f"*{'/'.join(found)}{unit}*"
     return "".join(base)
 
 
