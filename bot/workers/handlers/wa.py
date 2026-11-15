@@ -2144,10 +2144,11 @@ async def msg_ranking(event, args, client):
             if not msg:
                 return await event.reply("Can't fetch ranking right now!")
             return await event.reply(msg)
-        data = await get_ranking_data(chat_id, full=full)
-        if not data:
-            return await event.reply("Can't fetch ranking right now!")
-        await event.reply_photo(await ranking_card(data))
+        async with event.react("📊"):
+            data = await get_ranking_data(chat_id, full=full)
+            if not data:
+                return await event.reply("Can't fetch ranking right now!")
+            await event.reply_photo(await ranking_card(data))
     except Exception:
         await logger(Exception)
         await event.react("❌")
