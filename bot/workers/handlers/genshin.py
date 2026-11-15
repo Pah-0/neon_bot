@@ -137,6 +137,7 @@ async def manage_farm_chat(event, args, client):
         chat, _, region = rest.strip().partition(" ")
         region = region.strip().casefold() or DEFAULT_REGION
         chats = bot.gift_dict["farm"]
+        pinned = bot.gift_dict.setdefault("farm_pin", [])
         this_chat = f"{event.chat.id}:{event.chat.server}"
         user = event.from_user.id
         if not user_is_privileged(user):
@@ -149,8 +150,9 @@ async def manage_farm_chat(event, args, client):
             if action == "-get":
                 if this_chat not in chats:
                     return await event.reply("*The farm schedule isn't posted here.*")
+                pin = " and pinned for a day" if this_chat in pinned else ""
                 return await event.reply(
-                    f"*The farm schedule is posted here at the {REGION_NAMES[chats[this_chat]]} server's reset.*"
+                    f"*The farm schedule is posted here at the {REGION_NAMES[chats[this_chat]]} server's reset{pin}.*"
                 )
             if chat and chat not in (".", this_chat, event.chat.id):
                 return await event.reply("*Admins can only manage this chat (.)!*")
@@ -159,11 +161,20 @@ async def manage_farm_chat(event, args, client):
                 return await event.reply("*No chat set!*")
             return await event.reply(
                 list_to_str(
-                    [f"{c or 'default'} ({REGION_NAMES[r]})" for c, r in chats.items()],
+                    [
+                        f"{c or 'default'} ({REGION_NAMES[r]}"
+                        + (", pinned" if c in pinned else "")
+                        + ")"
+                        for c, r in chats.items()
+                    ],
                     sep=", ",
                 )
             )
-        if action not in ("-add", "-rm") or not chat or region not in REGIONS:
+        if (
+            action not in ("-add", "-rm", "-pin", "-unpin")
+            or not chat
+            or region not in REGIONS
+        ):
             return await event.reply(getdoc(farm))
         if chat in (".", event.chat.id):
             chat = this_chat
@@ -177,9 +188,21 @@ async def manage_farm_chat(event, args, client):
                 REGION_NAMES[region]} server's reset"
         elif chat not in chats:
             return await event.reply("*Given chat was never added!*")
-        else:
+        elif action == "-rm":
             chats.pop(chat)
+            if chat in pinned:
+                pinned.remove(chat)
             done = "removed"
+        elif action == "-pin":
+            if chat in pinned:
+                return await event.reply("*Already pinning in this chat!*")
+            pinned.append(chat)
+            done = "set to pin the farm schedule for a day (if I'm an admin there)"
+        else:
+            if chat not in pinned:
+                return await event.reply("*Wasn't pinning in this chat!*")
+            pinned.remove(chat)
+            done = "set to stop pinning the farm schedule"
         await save2db2(bot.gift_dict, "gift")
         await event.reply(f"*{chat or 'default'}* has been {done}.")
     except Exception:
@@ -227,6 +250,9 @@ async def farm(event, args, client):
         -add <chat> [region] : [Owner | Sudo | Admin] post the schedule to a chat
             at the region's daily reset
         -rm <chat> : [Owner | Sudo | Admin] stop posting it
+        -pin <chat> : [Owner | Sudo | Admin] pin the schedule posted to an
+            added chat for a day; needs the bot to be an admin there
+        -unpin <chat> : [Owner | Sudo | Admin] stop pinning it
         -get : [Owner | Sudo | Admin] list the chats it's posted to
     chat: . for this chat, default for RSS_CHAT, or chat_id:server
     Group admins can only manage the group they're in.
