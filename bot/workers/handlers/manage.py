@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import itertools
 import json
 from inspect import getdoc
@@ -946,6 +947,8 @@ async def enable_amr(event, args, client):
         group_info.update(msg_chat=True)
         ranking = group_info.setdefault("msg_ranking", {})
         ranking["period"] = args.casefold()
+        # The final standings' dates start here
+        ranking.setdefault("since", datetime.date.today().isoformat())
 
         await save2db2(bot.group_dict, "groups")
         await event.reply(

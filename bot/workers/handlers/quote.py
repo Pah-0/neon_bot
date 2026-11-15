@@ -13,6 +13,7 @@ from bot.utils.msg_utils import (
     user_is_privileged,
 )
 from bot.utils.quote_card import quote_card
+from bot.workers.handlers.wa import get_member_label
 
 
 async def quote(event, args, client):
@@ -49,7 +50,9 @@ async def quote(event, args, client):
                 backdrop.convert("RGB").save(out, format="jpeg", quality=92)
                 return await event.reply_photo(out.getvalue())
             me = bot.client.me or await bot.client.get_me()
-            await event.reply_sticker(png, quote=True, name=name, packname=me.PushName)
+            await event.reply_sticker(
+                sticker_size(png), quote=True, name=name, packname=me.PushName
+            )
     except NothingToQuote:
         await event.reply("*Reply to a text, photo or sticker message.*")
     except Exception:
@@ -107,7 +110,23 @@ async def make_quote(event, replied) -> tuple[bytes, str]:
             "user": answered.from_user.id,
             "name": await sender_name(answered.from_user),
             "text": preview_text(answered),
+            "tag": get_member_label(event.chat.id, answered.from_user),
         }
     name = await sender_name(sender)
-    png = await quote_card(sender.id, sender.jid, name, text, media, reply)
+    tag = get_member_label(event.chat.id, sender)
+    png = await quote_card(sender.id, sender.jid, name, text, media, reply, tag)
     return png, name
+
+
+def sticker_size(png: bytes) -> bytes:
+    """
+    The quote fitted into WhatsApp's 512×512 sticker with high-quality
+    resampling, so the sticker conversion has nothing left to resize
+    """
+    image = Image.open(io.BytesIO(png)).convert("RGBA")
+    image.thumbnail((512, 512), Image.Resampling.LANCZOS)
+    square = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    square.alpha_composite(image, ((512 - image.width) // 2, (512 - image.height) // 2))
+    out = io.BytesIO()
+    square.save(out, format="png")
+    return out.getvalue()

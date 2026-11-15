@@ -50,31 +50,30 @@ async def auto_rank():
             if period == "monthly" and not weekly_window:
                 continue
 
+            reset = (period == "weekly" and weekly_window) or (
+                period == "monthly" and monthly_window
+            )
             server = ranking.get("server")
-            await send_ranking(group, period, mentions_are_lids=(server == 0))
+            # On reset, the final standings, captioned with the reset notice
+            await send_ranking(
+                group, period, mentions_are_lids=(server == 0), final=reset
+            )
 
             await asyncio.sleep(3)
 
             # ---------- RESET LOGIC ----------
-            if period == "weekly" and not weekly_window:
-                continue
-            if period == "monthly" and not monthly_window:
+            if not reset:
                 continue
 
             saved_config = {
                 "period": ranking.get("period", "weekly"),
                 "server": ranking.get("server"),
+                # Where the next period's final standings start their dates
+                "since": today.date().isoformat(),
             }
             update_users_rank(group)
             ranking.clear()
             ranking.update(saved_config)
-
-            await bot.client.send_message(
-                jid.build_jid(group, "g.us"),
-                f"*{period.capitalize()} message ranking has been reset.*",
-            )
-
-            await asyncio.sleep(3)
 
         except Exception:
             await logger(
@@ -107,15 +106,26 @@ async def save_msg_ranking():
         await logger(Exception)
 
 
-async def send_ranking(group, period, mentions_are_lids):
-    """The leaderboard card, captioned with the top ten tagged; text if drawing fails"""
+async def send_ranking(group, period, mentions_are_lids, final=False):
+    """
+    The leaderboard card, captioned with the top ten tagged; on reset (final)
+    the final-standings card, captioned with the reset notice. Text if
+    drawing fails.
+    """
     chat = jid.build_jid(group, "g.us")
+    notice = f"*{period.capitalize()} message ranking has been reset.*"
     try:
         data = await get_ranking_data(group)
         if not data:
             return
         tags = "  ".join(f"{r['place']}. @{r['user']}" for r in data["rows"])
-        caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
+        if final:
+            data["final"] = "week ended" if period == "weekly" else "month ended"
+            since = bot.group_dict.get(group, {}).get("msg_ranking", {}).get("since")
+            data["period"] = period_dates(since, period, datetime.date.today())
+            caption = f"{notice}\n{tags}"
+        else:
+            caption = f"📈 *{period.capitalize()} message leaderboard*\n{tags}"
         await bot.client.send_image(
             chat, await ranking_card(data), caption, mentions_are_lids=mentions_are_lids
         )
@@ -126,6 +136,33 @@ async def send_ranking(group, period, mentions_are_lids):
             await bot.client.send_message(
                 chat, msg, mentions_are_lids=mentions_are_lids
             )
+        if final:
+            await bot.client.send_message(chat, notice)
+
+
+def period_dates(since: str | None, period: str, end: datetime.date) -> str:
+    """
+    The dates a ranking period covered, e.g. "9 – 15 Nov", "28 Oct – 3 Nov".
+    Rankings from before "since" was kept get the last week, or the month.
+    """
+    try:
+        start = datetime.date.fromisoformat(since)
+    except (TypeError, ValueError):
+        if period == "weekly":
+            start = end - datetime.timedelta(days=6)
+        else:
+            # Monthly resets come in the first days of the new month
+            first = end.replace(day=1)
+            start = (
+                (first - datetime.timedelta(days=1)).replace(day=1)
+                if end.day <= 7
+                else first
+            )
+    if start.year != end.year:
+        return f"{start:%-d %b %Y} – {end:%-d %b %Y}"
+    if start.month != end.month:
+        return f"{start:%-d %b} – {end:%-d %b}"
+    return f"{start:%-d} – {end:%-d %b}"
 
 
 def update_users_rank(chat_id):

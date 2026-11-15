@@ -2085,6 +2085,58 @@ async def purge_messages(event, args, client):
         await event.react("❌")
 
 
+# ProtocolMessage type sent when a member sets or clears their group tag
+MEMBER_LABEL_CHANGE = 30
+
+
+def member_label_keys(user) -> set:
+    """Every id a member's tag is saved under (phone number and LID forms)"""
+    return {
+        k for k in (user.id, getattr(user, "hid", None), getattr(user, "ph", None)) if k
+    }
+
+
+async def rec_member_label(event, args, client):
+    """
+    Remembers group members' tags (WhatsApp member labels) as they appear on
+    their messages or change, for .quote; WhatsApp has no way to ask for them
+    """
+    try:
+        if not event.chat.is_group:
+            return
+        label = None
+        if event.protocol and event.protocol.type == MEMBER_LABEL_CHANGE:
+            # An empty label means the tag was removed
+            label = event.protocol.memberLabel.label
+        else:
+            context = getattr(event.media, "contextInfo", None) if event.media else None
+            if context is not None and context.HasField("memberLabel"):
+                label = context.memberLabel.label
+        if label is None:
+            return
+        labels = bot.group_dict.setdefault(event.chat.id, {}).setdefault(
+            "member_labels", {}
+        )
+        changed = False
+        for key in member_label_keys(event.from_user) | {event.user.id}:
+            if labels.get(key) != label:
+                labels[key] = label
+                changed = True
+        if changed:
+            # Saved with the leaderboard counts on their timer
+            bot.msg_leaderboard_counter += 1
+    except Exception:
+        await logger(Exception)
+
+
+def get_member_label(chat_id, user) -> str:
+    labels = bot.group_dict.get(chat_id, {}).get("member_labels", {})
+    for key in member_label_keys(user):
+        if labels.get(key):
+            return labels[key]
+    return ""
+
+
 async def rec_msg_ranking(event, args, client):
     """
     Helper for the message leaderboard
@@ -3344,6 +3396,7 @@ bot.add_handler(tag_all_admins)
 bot.add_handler(tag_all_owners)
 bot.add_handler(tag_all_sudoers)
 bot.add_handler(rec_msg_ranking)
+bot.add_handler(rec_member_label)
 
 bot.add_handler(to_doc, "doc")
 bot.add_handler(getfps, "fps")
