@@ -35,7 +35,6 @@ from .workers.handlers.dev import bash, eval_message, get_logs
 from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import gift_codes
-from .workers.handlers.profile import profile
 from .workers.handlers.manage import (
     auto_del_as_mute,
     ban,
@@ -58,6 +57,7 @@ from .workers.handlers.manage import (
 )
 from .workers.handlers.media_dl import youtube_reply
 from .workers.handlers.objection import insession, render_objection
+from .workers.handlers.profile import profile
 from .workers.handlers.role import roles
 from .workers.handlers.stuff import gc_info, getcmds, hello, up
 from .workers.handlers.tldr import eli5, razor, tldr

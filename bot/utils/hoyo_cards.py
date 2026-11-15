@@ -696,9 +696,8 @@ async def profile_card(player, characters: list, uid_text: str) -> bytes:
         or getattr(player.profile_picture_icon, "front", None),
     }
     if player.stygian_difficulty:
-        urls["medal"] = (
-            f"{ENKA_UI}UI_LeyLineChallenge_Medal_{player.stygian_difficulty}.png"
-        )
+        urls["medal"] = f"{ENKA_UI}UI_LeyLineChallenge_Medal_{
+                player.stygian_difficulty}.png"
     for i, character in enumerate(characters):
         urls[f"char{i}"] = character.icon.front
     await ensure_fonts(
