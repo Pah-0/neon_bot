@@ -2,6 +2,7 @@ import asyncio
 import copy
 import datetime
 import io
+import json
 import random
 import re
 import time
@@ -14,6 +15,10 @@ from os.path import splitext as split_ext
 
 from clean_links.clean import clean_url
 from neonize.exc import DownloadError
+from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import (
+    FutureProofMessage,
+    InteractiveMessage,
+)
 from neonize.utils.enum import MediaType
 from neonize.utils.ffmpeg import AFFmpeg
 from neonize.utils.jid import Jid2String
@@ -3416,6 +3421,73 @@ async def test_button(event, args, client):
         await logger(Exception)
 
 
+# Test native-button messages sent by nbutton, so a press can be answered
+native_button_tests: dict[str, dict[str, str]] = {}
+
+
+async def test_native_buttons(event, args, client):
+    """
+    [Owner | Sudo] Send a message with real (native-flow) quick-reply buttons,
+    to see whether WhatsApp shows them, and report which one is pressed.
+
+    Arguments:
+        -vo : wrap it in a view-once message, as some clients need
+    """
+    if not user_is_privileged(event.from_user.id):
+        return
+    try:
+        flags = get_args(["-vo", "store_true"], to_parse=args or "")
+        labels = {f"btn_{i}": f"Button {i}" for i in (1, 2, 3)}
+        buttons = [
+            InteractiveMessage.NativeFlowMessage.NativeFlowButton(
+                name="quick_reply",
+                buttonParamsJSON=json.dumps({"display_text": label, "id": key}),
+            )
+            for key, label in labels.items()
+        ]
+        interactive = InteractiveMessage(
+            body=InteractiveMessage.Body(text="Native button test: press one."),
+            footer=InteractiveMessage.Footer(text="view-once" if flags.vo else "plain"),
+            nativeFlowMessage=InteractiveMessage.NativeFlowMessage(
+                buttons=buttons, messageVersion=1
+            ),
+        )
+        message = Message(interactiveMessage=interactive)
+        if flags.vo:
+            message = Message(viewOnceMessage=FutureProofMessage(message=message))
+        sent = await bot.client.send_message(event.chat.jid, message)
+        native_button_tests[sent.ID] = labels
+    except Exception as e:
+        await logger(Exception)
+        await event.reply(f"*Error:*\n{e}")
+
+
+async def native_button_press(event, args, client):
+    """
+    Answers presses on nbutton test messages.
+    AUTO FUNCTION
+    """
+    if not native_button_tests:
+        return
+    msg = event.message.Message
+    if msg.HasField("interactiveResponseMessage"):
+        response = msg.interactiveResponseMessage
+        quoted = response.contextInfo.stanzaID
+        try:
+            key = json.loads(response.nativeFlowResponseMessage.paramsJSON).get("id")
+        except (ValueError, AttributeError):
+            key = None
+    elif msg.HasField("buttonsResponseMessage"):
+        response = msg.buttonsResponseMessage
+        quoted = response.contextInfo.stanzaID
+        key = response.selectedButtonID
+    else:
+        return
+    if not (labels := native_button_tests.get(quoted)):
+        return
+    await event.reply(f"*{labels.get(key, key or 'An unknown button')} was pressed.*")
+
+
 # Add command handlers
 bot.add_handler(to_media)
 bot.add_handler(get_notes2)
@@ -3499,3 +3571,5 @@ bot.add_handler(auto_del_msg, SEQUENTIAL_AUTO)
 
 # test
 bot.add_handler(test_button, "button")
+bot.add_handler(test_native_buttons, "nbutton")
+bot.add_handler(native_button_press)
