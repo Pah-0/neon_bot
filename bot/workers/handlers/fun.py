@@ -2,7 +2,7 @@ import random
 from urllib.parse import quote_plus
 
 from bot.config import bot, conf
-from bot.utils.bot_utils import get_json, png_to_jpg
+from bot.utils.bot_utils import get_json, png_to_jpg, space_commands
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
@@ -34,7 +34,7 @@ async def fun(event, args, client):
             f"{pre}gsticker [search] - *Get a random sticker matching search (default: anime)*{s}"
             f"{pre}meme [subreddit] - *Get a random reddit meme*"
         )
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception:
         await logger(Exception)
         await event.react("❌")

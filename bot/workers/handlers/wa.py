@@ -59,6 +59,7 @@ from bot.utils.bot_utils import (
     wait_for_turn,
     waiting_for_turn,
     write_binary,
+    space_commands,
 )
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
@@ -192,7 +193,7 @@ async def tools(event, args, client):
             f"{s}"
             f"{pre}undel - *Resend recently deleted messages*{s}"
         )
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception:
         await logger(Exception)
         await event.react("❌")

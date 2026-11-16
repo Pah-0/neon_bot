@@ -1,7 +1,7 @@
 from datetime import datetime as dt
 
 from bot.config import conf
-from bot.utils.bot_utils import get_date_from_ts
+from bot.utils.bot_utils import get_date_from_ts, space_commands
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
@@ -37,7 +37,7 @@ async def getcmds(event, args, client):
 {pre}tools - *Get tools commands*
 {pre}roles - *Get commands for roles*
 {pre}manage - *Get bot and group management commands*"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
@@ -67,7 +67,7 @@ async def game_cmds(event, args, client):
 *Genshin, Star Rail & ZZZ:*
 {pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
 {pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
@@ -94,7 +94,7 @@ async def lookup_cmds(event, args, client):
 {pre}novel - *Fetch web and light novel info from MangaUpdates (-wp for Wattpad stories)*
 {pre}fic - *Look up a fanfic on AO3*
 {pre}imdb - *Fetch film and TV series info with IMDb ratings (-movie or -tv to narrow it)*"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
@@ -150,7 +150,7 @@ async def manage_cmds(event, args, client):
 
 * expands to _ytdl_enable/ytdl_disable_
 * expands to _amr_enable/amr_disable_"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")

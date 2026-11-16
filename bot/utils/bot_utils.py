@@ -414,6 +414,11 @@ def get_sha256(string: str):
     return sha256(string.encode("utf-8")).hexdigest()
 
 
+def space_commands(text: str, prefix: str) -> str:
+    """A command listing with a blank line before each command, for readability"""
+    return re.sub(r"\n+(?=" + re.escape(prefix) + ")", "\n\n", text)
+
+
 def trunc_string(string: str, limit: int):
     return (string[: limit - 2] + "…") if len(string) > limit else string
 
