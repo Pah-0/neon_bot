@@ -34,7 +34,7 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 - **Filters**: Automatic responses for specific keywords.
 - **Notes**: Save and retrieve frequently used text or media (`.get name` or `#name`).
 - **Message Ranking**: Track message statistics as leaderboard cards, posted every Sunday, with weekly leaderboards or monthly ones that reset in the first week of each month (🥇, 🥈, 🥉).
-- **Moderation**: Pin/unpin and purge messages, auto-delete messages from muted users, and auto-delete mass tags.
+- **Moderation**: Pin/unpin and purge messages; kick, ban and add members in a group or across its community; auto-delete messages from muted users and mass tags.
 - **Undelete**: Retrieve deleted messages in a group.
 
 ### 🎉 Fun & Entertainment
@@ -134,6 +134,9 @@ Each sends a poll when several titles match.
 - `.pin` / `.unpin`: Pin or unpin a replied message.
 - `.purge`: Mass delete messages.
 - `.mute [-a/-rm/-c] [-role <role> | -except <role>]`: Manage users whose messages are auto-deleted; `-role` mutes a role's members and `-except` mutes everyone outside a role. Admins, owner and sudo are never muted.
+- `.kick <user|@mention> [-c]`: Remove members from the group (or reply to their message); `-c` removes them from every group of the community and the community itself.
+- `.gban [user|@mention] [-c]` / `.gunban <user> [-c]`: Ban members from the group, so they're removed now and again whenever they rejoin, and their requests to join are declined, even before they've joined; with no arguments, list the banned / lift a ban. `-c` bans from (or unbans from) the whole community. Unlike `.ban`, which only stops someone using the bot.
+- `.add <number> [-c]`: Add people to the group by phone number, or to the community (its announcement group) with `-c`; anyone whose privacy settings block it is sent the invite link.
 - `.enable_atd` / `.disable_atd`: Toggle auto-deleting mass tags.
 - `.ytdl_enable` / `.ytdl_disable`: Toggle the auto downloader in a chat.
 - `.enable` / `.disable`: Enable or disable bot replies in a group.

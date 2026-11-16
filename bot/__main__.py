@@ -58,6 +58,7 @@ from .workers.handlers.manage import (
     ytdl_enable,
 )
 from .workers.handlers.media_dl import youtube_reply
+from .workers.handlers.members import add, gban, gunban, kick
 from .workers.handlers.objection import insession, render_objection
 from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
 from .workers.handlers.quote import quote
@@ -339,6 +340,26 @@ async def _(client: NewAClient, message: Event):
 @bot.register("greetings")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, grt_toggle, bot.client, require_args=True)
+
+
+@bot.register("kick")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, kick, bot.client)
+
+
+@bot.register("gban")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, gban, bot.client)
+
+
+@bot.register("gunban")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, gunban, bot.client)
+
+
+@bot.register("add")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, add, bot.client)
 
 
 @bot.register("mute")
