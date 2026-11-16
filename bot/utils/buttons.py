@@ -167,10 +167,7 @@ async def choose(
 
 async def choose_by_poll(chat, title, options: dict, user: str, quoted, timeout):
     """choose()'s fallback: the same choice as a single-answer poll"""
-    from bot.utils.sudo_button_utils import (
-        create_sudo_button,
-        wait_for_button_response,
-    )
+    from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
 
     poll = {
         key: [f"{i}. {name}", name] for i, (key, name) in enumerate(options.items(), 1)
