@@ -1,12 +1,20 @@
+import re
 from inspect import getdoc
+from urllib.parse import urlsplit
 
 from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 
 from bot import bot, jid
+from bot.others.exceptions import StopAutoHandlers
 from bot.utils.db_utils import save2db2
-from bot.utils.events import Event
+from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_mentioned, user_is_admin, user_is_privileged
+from bot.utils.msg_utils import (
+    get_args,
+    get_mentioned,
+    user_is_admin,
+    user_is_privileged,
+)
 
 # Error codes WhatsApp gives per participant when adding one fails
 ADD_ERRORS = {
@@ -15,6 +23,13 @@ ADD_ERRORS = {
     409: "is already in the group",
     500: "can't be added; the group is full",
 }
+# Links with a scheme or www., or bare domains on common TLDs (chat.whatsapp.com…);
+# not email addresses
+LINK_RE = re.compile(
+    r"(?i)\b(?:https?://|www\.)[^\s<>]+"
+    r"|(?<![@\w.-])(?:[a-z0-9-]+\.)+(?:com|net|org|io|gg|me|ly|co|xyz|app|dev|link|tv|info"
+    r"|ru|in|us|uk|be|to|site|online|store|shop|club|live|top|cc|ws)\b(?:/[^\s<>]*)?"
+)
 
 
 def find_member(user: str, participants):
@@ -51,6 +66,12 @@ def tag(member) -> str:
     return f"@{member.JID.User}"
 
 
+def parse(args: str):
+    """(community flag, the rest of args)"""
+    flags, rest = get_args(["-c", "store_true"], to_parse=args or "", get_unknown=True)
+    return flags.c, rest
+
+
 async def other_ids(user: str) -> set:
     """user with the LID of their number, or the number of their LID"""
     ids = {user}
@@ -66,25 +87,74 @@ async def other_ids(user: str) -> set:
     return ids
 
 
-async def admin_check(event: Event, client):
+def community_of(group_info):
+    """The JID of the community a group belongs to, or None"""
+    parent = group_info.GroupLinkedParent.LinkedParentJID
+    return parent if parent.User else None
+
+
+def bans(chat_id: str, community: bool = False) -> set:
+    """The ban list of a group, or of a community (by its JID's user)"""
+    key = "community_gbanned" if community else "gbanned"
+    return bot.group_dict.setdefault(chat_id, {}).setdefault(key, set())
+
+
+async def banned_for(group_jid) -> set:
+    """Everyone banned from a group: its own bans and its community's"""
+    banned = set(bot.group_dict.get(group_jid.User, {}).get("gbanned") or ())
+    # Only look up the community when some community has bans
+    if any(
+        g.get("community_gbanned")
+        for g in bot.group_dict.values()
+        if isinstance(g, dict)
+    ):
+        try:
+            info = await bot.client.get_group_info(group_jid)
+            if community := community_of(info):
+                banned |= (
+                    bot.group_dict.get(community.User, {}).get("community_gbanned")
+                    or set()
+                )
+        except Exception:
+            await logger(Exception)
+    return banned
+
+
+async def admin_check(event: Event, client, community: bool = False):
     """
-    The group info if the sender may manage members and the bot is a group
-    admin; otherwise replies or reacts and returns None
+    (group info, community JID or None) if the sender may manage members and
+    the bot is a group admin; with community, the group must be in one and
+    the sender must be a community admin. Otherwise replies or reacts and
+    returns (None, None).
     """
     if not event.chat.is_group:
         await event.react("🚫")
-        return None
+        return None, None
     group_info = await client.get_group_info(event.chat.jid)
     user = event.from_user.id
-    if not user_is_privileged(user) and not user_is_admin(
-        user, group_info.Participants
-    ):
+    parent = community_of(group_info)
+    if community and not parent:
+        await event.reply("*This group isn't part of a community.*")
+        return None, None
+    allowed = user_is_privileged(user)
+    if not allowed:
+        if community:
+            try:
+                parent_info = await client.get_group_info(parent)
+                allowed = user_is_admin(user, parent_info.Participants)
+            except Exception:
+                allowed = False
+        else:
+            allowed = user_is_admin(user, group_info.Participants)
+    if not allowed:
         await event.react("🚫")
-        return None
-    if not user_is_admin(bot.client.me.JID.User, group_info.Participants):
+        return None, None
+    if not community and not user_is_admin(
+        bot.client.me.JID.User, group_info.Participants
+    ):
         await event.reply("*I need to be a group admin for that to work.*")
-        return None
-    return group_info
+        return None, None
+    return group_info, parent
 
 
 def protected(member, participants) -> bool:
@@ -98,10 +168,10 @@ def protected(member, participants) -> bool:
     )
 
 
-async def remove(event: Event, client, members: list) -> list:
-    """Removes members from the group; those it couldn't remove"""
+async def remove(client, group_jid, members: list) -> list:
+    """Removes members from a group; those it couldn't remove"""
     result = await client.update_group_participants(
-        event.chat.jid, [m.JID for m in members], ParticipantChange.REMOVE
+        group_jid, [m.JID for m in members], ParticipantChange.REMOVE
     )
     # The answer may name a member by their other id (number or LID)
     failed = set().union(*(member_ids(p) for p in result if p.Error))
@@ -113,17 +183,24 @@ async def kick(event: Event, args, client):
     [Owner | Sudo | Admin] Remove members from this group. Group only; the
     bot must be a group admin. They can rejoin; use gban to keep them out.
 
-    Usage: kick user_id/@mention ... (or reply to a member's message)
+    Usage: kick user_id/@mention ... [-c] (or reply to a member's message)
+        -c : remove them from every group of this group's community, and
+            from the community itself (community admins only)
 
     user_id: phone number with country code (leading + optional) or lid
     """
-    if not (group_info := await admin_check(event, client)):
+    community, rest = parse(args)
+    group_info, parent = await admin_check(event, client, community)
+    if not group_info:
         return
-    ids = targets(event, args or "")
+    ids = targets(event, rest)
     if not ids:
         return await event.reply(getdoc(kick))
     try:
-        await kick_or_ban(event, client, group_info, ids, ban=False)
+        if community:
+            await community_remove(event, client, parent, ids, ban=False)
+        else:
+            await kick_or_ban(event, client, group_info, ids, ban=False)
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
@@ -132,11 +209,7 @@ async def kick(event: Event, args, client):
 async def kick_or_ban(event: Event, client, group_info, ids: list, ban: bool):
     participants = group_info.Participants
     to_remove, notes = [], []
-    banned: set = (
-        bot.group_dict.setdefault(event.chat.id, {}).setdefault("gbanned", set())
-        if ban
-        else set()
-    )
+    banned = bans(event.chat.id) if ban else set()
     for user in ids:
         member = find_member(user, participants)
         if member is None:
@@ -153,7 +226,7 @@ async def kick_or_ban(event: Event, client, group_info, ids: list, ban: bool):
         if ban:
             banned.update(member_ids(member))
         to_remove.append(member)
-    failed = await remove(event, client, to_remove) if to_remove else []
+    failed = await remove(client, event.chat.jid, to_remove) if to_remove else []
     for member in to_remove:
         mention = tag(member)
         if member in failed:
@@ -170,31 +243,111 @@ async def kick_or_ban(event: Event, client, group_info, ids: list, ban: bool):
         )
 
 
+async def community_remove(event: Event, client, parent, ids: list, ban: bool):
+    """
+    Removes ids from every group of the community the bot is admin in, then
+    from the community itself; with ban, they're kept out of all of them
+    """
+    removed = {user: [] for user in ids}
+    skipped, protected_ids = [], set()
+    # Each user's JID as the groups know it, for removing them from the community
+    known = {}
+    groups = await client.get_sub_groups(parent)
+    for group in groups:
+        try:
+            info = await client.get_group_info(group.JID)
+        except Exception:
+            skipped.append(group.GroupName.Name)
+            continue
+        if not user_is_admin(bot.client.me.JID.User, info.Participants):
+            skipped.append(info.GroupName.Name)
+            continue
+        members = {}
+        for user in ids:
+            member = find_member(user, info.Participants)
+            if member is None:
+                continue
+            known.setdefault(user, member.JID)
+            if protected(member, info.Participants):
+                protected_ids.add(user)
+                continue
+            members[user] = member
+        if not members:
+            continue
+        failed = await remove(client, group.JID, list(members.values()))
+        for user, member in members.items():
+            if member not in failed:
+                removed[user].append(info.GroupName.Name)
+    # Out of the community itself too; groups the bot couldn't reach included
+    leaving = [
+        known.get(u) or jid.build_jid(u, "s.whatsapp.net")
+        for u in ids
+        if u not in protected_ids
+    ]
+    if leaving:
+        try:
+            await client.update_group_participants(
+                parent, leaving, ParticipantChange.REMOVE
+            )
+        except Exception:
+            pass
+    notes = []
+    if ban:
+        banned = bans(parent.User, community=True)
+        for user in ids:
+            if user not in protected_ids:
+                banned.update(await other_ids(user))
+        await save2db2(bot.group_dict, "groups")
+    for user in ids:
+        if user in protected_ids:
+            notes.append("*Owner, sudoers, group admins and the bot can't be removed.*")
+            continue
+        where = (
+            f"from {len(removed[user])} group(s)" if removed[user] else "from no groups"
+        )
+        what = "banned from the community and removed" if ban else "removed"
+        notes.append(f"*{user}:* {what} {where}.")
+    if skipped:
+        notes.append(f"_Skipped (I'm not admin there): {', '.join(skipped)}_")
+    await event.reply("\n".join(dict.fromkeys(notes)))
+
+
 async def gban(event: Event, args, client):
     """
     [Owner | Sudo | Admin] Ban members from this group: they're removed,
     removed again whenever they rejoin, and their requests to join are
-    declined, until gunban. Group only; the bot must
-    be a group admin. Someone who isn't in the group yet can be banned by
-    number. With no arguments, lists the banned.
+    declined, until gunban. Group only; the bot must be a group admin.
+    Someone who isn't in the group yet can be banned by number. With no
+    arguments, lists the banned.
 
-    Usage: gban user_id/@mention ... (or reply to a member's message)
+    Usage: gban user_id/@mention ... [-c] (or reply to a member's message)
+        -c : ban them from this group's whole community: removed from every
+            group of it the bot is admin in, and kept out of all of them
+            (community admins only)
 
     user_id: phone number with country code (leading + optional) or lid
     """
-    if not (group_info := await admin_check(event, client)):
+    community, rest = parse(args)
+    group_info, parent = await admin_check(event, client, community)
+    if not group_info:
         return
-    ids = targets(event, args or "")
+    ids = targets(event, rest)
     if not ids:
-        banned = bot.group_dict.get(event.chat.id, {}).get("gbanned")
+        banned = bot.group_dict.get(
+            parent.User if community else event.chat.id, {}
+        ).get("community_gbanned" if community else "gbanned")
+        where = "this community" if community else "this group"
         if not banned:
             return await event.reply(
-                f"*No one is banned from this group.*\n\n{getdoc(gban)}"
+                f"*No one is banned from {where}.*\n\n{getdoc(gban)}"
             )
         listed = "\n".join(f"• {u}" for u in sorted(banned))
-        return await event.reply(f"*Banned from this group (ids):*\n{listed}")
+        return await event.reply(f"*Banned from {where} (ids):*\n{listed}")
     try:
-        await kick_or_ban(event, client, group_info, ids, ban=True)
+        if community:
+            await community_remove(event, client, parent, ids, ban=True)
+        else:
+            await kick_or_ban(event, client, group_info, ids, ban=True)
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
@@ -205,28 +358,38 @@ async def gunban(event: Event, args, client):
     [Owner | Sudo | Admin] Lift a group ban, so the user can rejoin. Group
     only. It doesn't add them back; use add for that.
 
-    Usage: gunban user_id ... (as listed by gban)
+    Usage: gunban user_id ... [-c] (as listed by gban)
+        -c : lift a community ban (community admins only)
     """
+    community, rest = parse(args)
     if not event.chat.is_group:
         return await event.react("🚫")
     group_info = await client.get_group_info(event.chat.jid)
+    parent = community_of(group_info)
+    if community and not parent:
+        return await event.reply("*This group isn't part of a community.*")
     user = event.from_user.id
-    if not user_is_privileged(user) and not user_is_admin(
-        user, group_info.Participants
-    ):
-        return await event.react("🚫")
-    ids = targets(event, args or "")
+    if not user_is_privileged(user):
+        try:
+            admins_of = await client.get_group_info(parent) if community else group_info
+            allowed = user_is_admin(user, admins_of.Participants)
+        except Exception:
+            allowed = False
+        if not allowed:
+            return await event.react("🚫")
+    ids = targets(event, rest)
     if not ids:
         return await event.reply(getdoc(gunban))
-    banned: set = bot.group_dict.get(event.chat.id, {}).get("gbanned", set())
+    banned = bans(parent.User, community=True) if community else bans(event.chat.id)
+    where = "this community" if community else "this group"
     notes = []
     for user in ids:
         if user not in banned:
-            notes.append(f"*{user} isn't banned from this group.*")
+            notes.append(f"*{user} isn't banned from {where}.*")
             continue
         # Their other id (number or LID) goes too
         banned.difference_update(await other_ids(user))
-        notes.append(f"*{user} can join this group again.*")
+        notes.append(f"*{user} can join {where} again.*")
     await save2db2(bot.group_dict, "groups")
     await event.reply("\n".join(notes))
 
@@ -238,63 +401,76 @@ async def add(event: Event, args, client):
     the bot from adding them, they're sent the group's invite link instead.
     Banned users (gban) must be unbanned first.
 
-    Usage: add phone_number ... (with country code, leading + optional)
+    Usage: add phone_number ... [-c] (with country code, leading + optional)
+        -c : add them to this group's community instead, which puts them in
+            its announcement group (community admins only)
     """
-    if not (group_info := await admin_check(event, client)):
+    community, rest = parse(args)
+    group_info, parent = await admin_check(event, client, community)
+    if not group_info:
         return
-    numbers = [a.lstrip("+") for a in (args or "").split()]
+    numbers = [a.lstrip("+") for a in rest.split()]
     numbers = [n for n in numbers if n.isdigit()]
     if not numbers:
         return await event.reply(getdoc(add))
-    banned = bot.group_dict.get(event.chat.id, {}).get("gbanned", set())
+    banned = await banned_for(event.chat.jid)
+    if community:
+        banned |= bot.group_dict.get(parent.User, {}).get("community_gbanned") or set()
     notes = []
     if blocked := [n for n in numbers if n in banned]:
-        notes += [
-            f"*{n} is banned from this group; gunban them first.*" for n in blocked
-        ]
+        notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
         numbers = [n for n in numbers if n not in blocked]
+    target = parent if community else event.chat.jid
+    name = "the community" if community else f"*{group_info.GroupName.Name}*"
     try:
         if numbers:
-            result = await client.update_group_participants(
-                event.chat.jid,
-                [jid.build_jid(n, "s.whatsapp.net") for n in numbers],
-                ParticipantChange.ADD,
-            )
-            # Results aren't promised in the order sent; match them by number
-            by_number = {}
-            for participant in result:
-                for user in member_ids(participant):
-                    by_number[user] = participant
-            link = None
-            for number in numbers:
-                if not (participant := by_number.get(number)):
-                    notes.append(f"*No answer from WhatsApp for {number}.*")
-                    continue
-                if not participant.Error:
-                    notes.append(f"*Added {number}.*")
-                    continue
-                why = ADD_ERRORS.get(participant.Error, f"couldn't be added (error {
-                        participant.Error})")
-                if participant.Error == 403:
-                    link = link or await client.get_group_invite_link(event.chat.jid)
-                    await client.send_message(
-                        jid.build_jid(number, "s.whatsapp.net"),
-                        f"You're invited to join *{group_info.GroupName.Name}*:\n{link}",
-                    )
-                    why += "; they were sent the invite link"
-                notes.append(f"*{number} {why}.*")
+            notes += await add_numbers(client, target, name, numbers)
         await event.reply("\n".join(notes))
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
 
 
+async def add_numbers(client, target, name: str, numbers: list) -> list:
+    """Adds numbers to a group or community; a note on each"""
+    result = await client.update_group_participants(
+        target,
+        [jid.build_jid(n, "s.whatsapp.net") for n in numbers],
+        ParticipantChange.ADD,
+    )
+    # Results aren't promised in the order sent; match them by number
+    by_number = {}
+    for participant in result:
+        for user in member_ids(participant):
+            by_number[user] = participant
+    notes, link = [], None
+    for number in numbers:
+        if not (participant := by_number.get(number)):
+            notes.append(f"*No answer from WhatsApp for {number}.*")
+            continue
+        if not participant.Error:
+            notes.append(f"*Added {number}.*")
+            continue
+        why = ADD_ERRORS.get(
+            participant.Error, f"couldn't be added (error {participant.Error})"
+        )
+        if participant.Error == 403:
+            link = link or await client.get_group_invite_link(target)
+            await client.send_message(
+                jid.build_jid(number, "s.whatsapp.net"),
+                f"You're invited to join {name}:\n{link}",
+            )
+            why += "; they were sent the invite link"
+        notes.append(f"*{number} {why}.*")
+    return notes
+
+
 async def keep_out_banned(gc_msg) -> set:
     """
-    Removes group-banned users who just joined; the ids of those removed, so
-    they aren't welcomed
+    Removes users banned from the group or its community who just joined;
+    the ids of those removed, so they aren't welcomed
     """
-    banned = bot.group_dict.get(gc_msg.JID.User, {}).get("gbanned")
+    banned = await banned_for(gc_msg.JID)
     if not banned:
         return set()
     joined = [j for j in gc_msg.Join if (await other_ids(j.User)) & banned]
@@ -311,8 +487,8 @@ async def keep_out_banned(gc_msg) -> set:
 
 
 async def decline_banned_request(gc_msg):
-    """Rejects a group-banned user's request to join (the event's Sender)"""
-    banned = bot.group_dict.get(gc_msg.JID.User, {}).get("gbanned")
+    """Rejects a banned user's request to join (the event's Sender)"""
+    banned = await banned_for(gc_msg.JID)
     requester = gc_msg.Sender
     if not banned or not (await other_ids(requester.User)) & banned:
         return
@@ -326,3 +502,111 @@ async def decline_banned_request(gc_msg):
         )
     except Exception:
         await logger(Exception)
+
+
+def link_hosts(text: str) -> list[str]:
+    """The host of each link in text, lowercased and without www."""
+    hosts = []
+    for match in LINK_RE.finditer(text):
+        link = match.group(0)
+        if "://" not in link:
+            link = "http://" + link
+        host = (urlsplit(link).hostname or "").removeprefix("www.")
+        if host:
+            hosts.append(host)
+    return hosts
+
+
+def is_allowed(host: str, allowed: set) -> bool:
+    """Whether host is an allowed domain or a subdomain of one"""
+    return any(host == a or host.endswith("." + a) for a in allowed)
+
+
+async def antilink(event: Event, args, client):
+    """
+    [Owner | Sudo | Admin] Auto-delete messages with links in this group.
+    Group only; the bot must be a group admin. Owner, sudoers and group
+    admins can still post links. With no arguments, shows the setting.
+
+    Usage: antilink on | off
+           antilink -allow domain ... : let links to these domains (and their
+               subdomains) through, e.g. -allow youtube.com x.com
+           antilink -rm domain ... : stop allowing them
+    """
+    group_info, _ = await admin_check(event, client)
+    if not group_info:
+        return
+    flags, rest = get_args(
+        ["-allow", "store_true"],
+        ["-rm", "store_true"],
+        to_parse=args or "",
+        get_unknown=True,
+    )
+    settings = bot.group_dict.setdefault(event.chat.id, {})
+    allowed: set = settings.setdefault("link_allow", set())
+    words = rest.split()
+    if flags.allow or flags.rm:
+        domains = {
+            d.lower().removeprefix("www.").strip("/")
+            for w in words
+            for d in [urlsplit(w if "://" in w else "http://" + w).hostname or ""]
+            if d
+        }
+        if not domains:
+            return await event.reply(getdoc(antilink))
+        if flags.allow:
+            allowed |= domains
+        else:
+            allowed -= domains
+        await save2db2(bot.group_dict, "groups")
+    elif words and words[0].lower() in ("on", "off"):
+        settings["antilink"] = words[0].lower() == "on"
+        await save2db2(bot.group_dict, "groups")
+    elif words:
+        return await event.reply(getdoc(antilink))
+    state = "on" if settings.get("antilink") else "off"
+    note = f"*Link auto-delete is {state}.*"
+    if allowed:
+        note += f"\n*Allowed:* {', '.join(sorted(allowed))}"
+    await event.reply(note)
+
+
+async def delete_links(event: Event, _, client):
+    """
+    Deletes messages with links from members who aren't owner, sudoers or
+    group admins, where antilink is on and the bot is a group admin.
+    AUTO FUNCTION
+    """
+    if not event.chat.is_group:
+        return
+    settings = bot.group_dict.get(event.chat.id, {})
+    if not settings.get("antilink"):
+        return
+    if not (text := (event.text or event.caption)):
+        return
+    allowed = settings.get("link_allow") or set()
+    if not [h for h in link_hosts(text) if not is_allowed(h, allowed)]:
+        return
+    user = event.from_user.id
+    if user_is_privileged(user):
+        return
+    try:
+        group_info = await client.get_group_info(event.chat.jid)
+    except Exception:
+        # Never delete when we can't check for admins
+        await logger(Exception)
+        return
+    participants = group_info.Participants
+    if user_is_admin(user, participants) or not user_is_admin(
+        bot.client.me.JID.User, participants
+    ):
+        return
+    try:
+        await event.delete()
+    except Exception:
+        await logger(Exception)
+        return
+    raise StopAutoHandlers("message with a link was deleted")
+
+
+bot.add_handler(delete_links, SEQUENTIAL_AUTO)

@@ -58,7 +58,7 @@ from .workers.handlers.manage import (
     ytdl_enable,
 )
 from .workers.handlers.media_dl import youtube_reply
-from .workers.handlers.members import add, gban, gunban, kick
+from .workers.handlers.members import add, antilink, gban, gunban, kick
 from .workers.handlers.objection import insession, render_objection
 from .workers.handlers.profile import gi_profile, hsr_profile, zzz_profile
 from .workers.handlers.quote import quote
@@ -360,6 +360,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("add")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, add, bot.client)
+
+
+@bot.register("antilink")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, antilink, bot.client)
 
 
 @bot.register("mute")
