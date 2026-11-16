@@ -3,7 +3,7 @@ import time
 
 from bot import jid
 from bot.config import bot, conf
-from bot.utils.bot_utils import split_text, space_commands
+from bot.utils.bot_utils import space_commands, split_text
 from bot.utils.db_utils import save2db2
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (

@@ -51,6 +51,7 @@ from bot.utils.bot_utils import (
     same_week,
     screenshot_comments,
     screenshot_page,
+    space_commands,
     split_text,
     sync_to_async,
     turn,
@@ -59,7 +60,6 @@ from bot.utils.bot_utils import (
     wait_for_turn,
     waiting_for_turn,
     write_binary,
-    space_commands,
 )
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
