@@ -10,6 +10,7 @@ import json
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import InteractiveMessage
 
 from bot import Message, bot
+from bot.utils.events import add_handler
 from bot.utils.log_utils import logger
 
 # WhatsApp shows at most 10 quick replies per message, with short labels
@@ -107,4 +108,6 @@ async def button_press(event, args, client):
         await logger(Exception)
 
 
-bot.add_handler(button_press)
+# Through events directly: this module can be imported before events has
+# attached add_handler to bot (startup -> msg_rank -> wa -> here)
+add_handler(button_press)
