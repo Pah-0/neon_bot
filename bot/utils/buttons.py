@@ -5,7 +5,9 @@ prefix gets the press event and the data. Sent unwrapped: wrapped in a
 view-once message, WhatsApp doesn't render them.
 """
 
+import asyncio
 import json
+import uuid
 
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import InteractiveMessage
 
@@ -18,6 +20,8 @@ MAX_BUTTONS = 10
 MAX_LABEL = 20
 
 _handlers = {}
+# choose() calls waiting for a press: token -> what they wait for
+_waiting: dict[str, dict] = {}
 
 
 def on_button(prefix: str):
@@ -111,6 +115,88 @@ async def button_press(event, args, client):
         await handler(event, data)
     except Exception:
         await logger(Exception)
+
+
+async def choose(
+    chat,
+    title: str,
+    options: dict,
+    users: set | None = None,
+    poll_user: str = "",
+    quoted=None,
+    timeout: float = 300.0,
+):
+    """
+    Lets someone pick one of options ({key: label}) with buttons and returns
+    its key, or None on timeout; users holds the ids allowed to press (all if
+    empty). The labels are listed in full above the buttons, which only fit
+    short ones. If the buttons can't be sent, a poll is used instead
+    (poll_user and quoted are for it). The buttons are deleted afterwards.
+    """
+    keys = list(options)
+    token = uuid.uuid4().hex[:10]
+    future = asyncio.get_running_loop().create_future()
+    _waiting[token] = {"future": future, "keys": keys, "users": users or set()}
+    listing = "\n".join(f"{i}. {name}" for i, name in enumerate(options.values(), 1))
+    sent = []
+    try:
+        sent = await send_buttons(
+            chat,
+            f"{title}\n\n{listing}",
+            [
+                (f"choose:{token}:{i}", f"{i + 1}. {name}")
+                for i, name in enumerate(options.values())
+            ],
+        )
+    except Exception:
+        await logger(Exception)
+        _waiting.pop(token, None)
+        return await choose_by_poll(chat, title, options, poll_user, quoted, timeout)
+    try:
+        return await asyncio.wait_for(future, timeout)
+    except asyncio.TimeoutError:
+        return None
+    finally:
+        _waiting.pop(token, None)
+        for message_id in sent:
+            try:
+                await bot.client.revoke_message(chat, bot.client.me.JID, message_id)
+            except Exception:
+                pass
+
+
+async def choose_by_poll(chat, title, options: dict, user: str, quoted, timeout):
+    """choose()'s fallback: the same choice as a single-answer poll"""
+    from bot.utils.sudo_button_utils import (
+        create_sudo_button,
+        wait_for_button_response,
+    )
+
+    poll = {
+        key: [f"{i}. {name}", name] for i, (key, name) in enumerate(options.items(), 1)
+    }
+    _, msg = await create_sudo_button(title, poll, chat, user, 1, None, quoted)
+    try:
+        choice = await wait_for_button_response(msg.ID, timeout=timeout)
+    finally:
+        try:
+            await bot.client.revoke_message(chat, bot.client.me.JID, msg.ID)
+        except Exception:
+            pass
+    return choice[0] if choice else None
+
+
+@on_button("choose")
+async def chosen(event, data: str):
+    """A press on choose()'s buttons, from someone allowed to press them"""
+    token, _, index = data.partition(":")
+    waiting = _waiting.get(token)
+    if not waiting or waiting["future"].done() or not index.isdigit():
+        return
+    if waiting["users"] and not sender_ids(event) & waiting["users"]:
+        return
+    if int(index) < len(waiting["keys"]):
+        waiting["future"].set_result(waiting["keys"][int(index)])
 
 
 # Through events directly: this module can be imported before events has

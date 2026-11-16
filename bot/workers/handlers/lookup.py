@@ -1,7 +1,7 @@
 import re
 from inspect import getdoc
 
-from bot.config import bot
+from bot.utils.buttons import choose, sender_ids
 from bot.utils.log_utils import logger
 from bot.utils.lookup_utils import (
     ao3_info,
@@ -17,12 +17,10 @@ from bot.utils.lookup_utils import (
 )
 from bot.utils.msg_utils import (
     chat_is_allowed,
-    construct_msg_and_evt,
     get_args,
     user_is_allowed,
     user_is_privileged,
 )
-from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
 
 
 async def allowed(event) -> bool:
@@ -40,29 +38,18 @@ async def allowed(event) -> bool:
 async def pick(event, results: list[tuple[str, str]], what: str) -> str | None:
     """
     The id of one of results ((id, label) pairs): the only one, or the one
-    picked from a poll; None on timeout
+    picked with buttons (or a poll if they can't be sent); None on timeout
     """
     if len(results) == 1:
         return results[0][0]
-    options = {
-        key: [f"{i}. {label}", label] for i, (key, label) in enumerate(results, 1)
-    }
-    title = f"{event.from_user.name} please select the {what} you meant."
-    poll_msg_, msg_ = await create_sudo_button(
-        title, options, event.chat.jid, event.from_user.id, 1, None, event.message
+    return await choose(
+        event.chat.jid,
+        f"{event.from_user.name} please select the {what} you meant.",
+        dict(results),
+        users=sender_ids(event),
+        poll_user=event.from_user.id,
+        quoted=event.message,
     )
-    poll_msg = construct_msg_and_evt(
-        event.chat.id,
-        bot.client.me.JID.User,
-        msg_.ID,
-        None,
-        event.chat.server,
-        bot.client.me.JID.Server,
-        poll_msg_,
-    )
-    choice = await wait_for_button_response(msg_.ID)
-    await poll_msg.delete()
-    return choice[0] if choice else None
 
 
 async def look_up(event, query: str, what: str, search, info, direct=None):
@@ -99,7 +86,8 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
 async def manga(event, args, client):
     """
     Looks up a manga, manhwa or manhua on AniList, or a light novel with -ln.
-    If a title matches several, a poll is sent to pick one.
+    If a title matches several, buttons are sent to pick one (or a poll if
+    they can't be sent).
 
     Usage: manga <title or AniList id> [-ln] [-m]
         -ln : look up light novels instead
@@ -130,7 +118,8 @@ async def manga(event, args, client):
 async def imdb(event, args, client):
     """
     Looks up a film or TV series, with its IMDb rating, cast and plot. If a
-    title matches several, a poll is sent to pick one. Data from Cinemeta.
+    title matches several, buttons are sent to pick one (or a poll if they
+    can't be sent). Data from Cinemeta.
 
     Usage: imdb <title or IMDb id (tt…)> [-movie | -tv]
         -movie : only search films
@@ -163,8 +152,8 @@ async def imdb(event, args, client):
 async def novel(event, args, client):
     """
     Looks up a web or light novel (Chinese, Korean, Japanese and more) on
-    MangaUpdates, or a Wattpad story with -wp. If a title matches several, a
-    poll is sent to pick one.
+    MangaUpdates, or a Wattpad story with -wp. If a title matches several,
+    buttons are sent to pick one (or a poll if they can't be sent).
 
     Usage: novel <title> [-wp]
         -wp : look up Wattpad stories instead
@@ -186,8 +175,9 @@ async def fic(event, args, client):
     """
     Looks up a fanfic on Archive of Our Own (AO3): fandom, rating, warnings,
     relationships, words, chapters, kudos and summary. The most-kudosed works
-    matching the search are offered in a poll; a work's id or link goes
-    straight to it. AO3 refuses bots at times, so this may not always work.
+    matching the search are offered as buttons (or a poll if they can't be
+    sent); a work's id or link goes straight to it. AO3 refuses bots at
+    times, so this may not always work.
 
     Usage: fic <title, search words, work id or AO3 link>
     """

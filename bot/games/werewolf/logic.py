@@ -4,6 +4,7 @@ from datetime import datetime
 
 from bot import sudo_btn_lock
 from bot.config import conf
+from bot.utils.buttons import choose
 from bot.utils.log_utils import logger
 from bot.utils.sudo_button_utils import (
     active_poll_dict,
@@ -351,16 +352,31 @@ async def request_night_action(game, player, is_night_zero):
         selectable = 3
     msg_id = None
     try:
-        _, msg_ = await create_sudo_button(
-            prompt,
-            options,
-            player.jid,
-            player.user_id,
-            selectable=selectable,
-            conf_btn=conf_btn,
-        )
-        msg_id = msg_.ID
-        response = await wait_for_button_response(msg_id, timeout=game.night_timeout)
+        if selectable == 1:
+            # One target: buttons (or a poll if they can't be sent), in the
+            # player's DM so only they can press
+            choice = await choose(
+                player.jid,
+                prompt,
+                {key: value[0] for key, value in options.items()},
+                poll_user=player.user_id,
+                timeout=game.night_timeout,
+            )
+            response = [choice] if choice else []
+        else:
+            # Several targets need a poll
+            _, msg_ = await create_sudo_button(
+                prompt,
+                options,
+                player.jid,
+                player.user_id,
+                selectable=selectable,
+                conf_btn=conf_btn,
+            )
+            msg_id = msg_.ID
+            response = await wait_for_button_response(
+                msg_id, timeout=game.night_timeout
+            )
         response = [r for r in (response or []) if r and r != "confirm"]
         if not response:
             return

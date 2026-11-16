@@ -1,5 +1,6 @@
 import asyncio
 import random
+import uuid
 
 from bot import sudo_btn_lock
 from bot.config import bot, conf
@@ -8,6 +9,7 @@ from bot.games.werewolf.defaults import DETECTIVE_REVEAL_CHANCE, MAX_PLAYERS
 from bot.games.werewolf.game import Game
 from bot.games.werewolf.logic import game_loop
 from bot.games.werewolf.roles import gamemodes
+from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
@@ -286,6 +288,22 @@ async def were_info(event, args, client):
     return await event.reply(msg)
 
 
+# Open lobbies with Join/Leave buttons: token -> game
+_lobbies: dict[str, Game] = {}
+
+
+@on_button("wwlobby")
+async def lobby_button(event, data: str):
+    """Join or Leave pressed on a lobby's buttons"""
+    token, _, action = data.partition(":")
+    if not (game := _lobbies.get(token)) or not game.waiting:
+        return
+    if action == "join":
+        await game.join(event, notify=True)
+    elif action == "leave":
+        await game.leave(event, notify=True)
+
+
 async def auto_start_manager(event, game):
     options = {
         "join": ("Join",),
@@ -303,15 +321,30 @@ async def auto_start_manager(event, game):
             return await game.leave(event, notify=True)
 
     msg = None
+    token = uuid.uuid4().hex[:10]
+    sent = []
     try:
-        _, msg = await create_sudo_button(
-            name="Werewolf Game Lobby",
-            options=options,
-            chat_jid=event.chat.jid,
-            user_id="",
-            selectable=1,
-            callback=btn_callback,
-        )
+        # Join/Leave buttons; a poll if they can't be sent
+        try:
+            sent = await send_buttons(
+                event.chat.jid,
+                "Werewolf Game Lobby",
+                [
+                    (f"wwlobby:{token}:join", "Join"),
+                    (f"wwlobby:{token}:leave", "Leave"),
+                ],
+            )
+            _lobbies[token] = game
+        except Exception:
+            await logger(Exception)
+            _, msg = await create_sudo_button(
+                name="Werewolf Game Lobby",
+                options=options,
+                chat_jid=event.chat.jid,
+                user_id="",
+                selectable=1,
+                callback=btn_callback,
+            )
         # start once nobody has joined/left for a while
         while game.waiting and len(game.player_ids) < MAX_PLAYERS:
             if not game.player_ids:  # everyone left
@@ -332,6 +365,14 @@ async def auto_start_manager(event, game):
     except Exception:
         await logger(Exception)
     finally:
+        _lobbies.pop(token, None)
+        for message_id in sent:
+            try:
+                await bot.client.revoke_message(
+                    event.chat.jid, bot.client.me.JID, message_id
+                )
+            except Exception:
+                pass
         if msg:
             async with sudo_btn_lock:
                 active_poll_dict.pop(msg.ID, None)
