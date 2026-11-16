@@ -61,6 +61,7 @@ from bot.utils.bot_utils import (
     waiting_for_turn,
     write_binary,
 )
+from bot.utils.buttons import pressed_button, sender_ids
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import log, logger
@@ -3425,7 +3426,7 @@ async def test_button(event, args, client):
 
 
 # Test native-button messages sent by nbutton, so a press can be answered
-native_button_tests: dict[str, dict[str, str]] = {}
+native_button_tests: dict[str, dict] = {}
 
 
 async def test_native_buttons(event, args, client):
@@ -3459,7 +3460,8 @@ async def test_native_buttons(event, args, client):
         if flags.vo:
             message = Message(viewOnceMessage=FutureProofMessage(message=message))
         sent = await bot.client.send_message(event.chat.jid, message)
-        native_button_tests[sent.ID] = labels
+        # Only whoever sent the command can press them
+        native_button_tests[sent.ID] = {"labels": labels, "by": sender_ids(event)}
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
@@ -3472,22 +3474,14 @@ async def native_button_press(event, args, client):
     """
     if not native_button_tests:
         return
-    msg = event.message.Message
-    if msg.HasField("interactiveResponseMessage"):
-        response = msg.interactiveResponseMessage
-        quoted = response.contextInfo.stanzaID
-        try:
-            key = json.loads(response.nativeFlowResponseMessage.paramsJSON).get("id")
-        except (ValueError, AttributeError):
-            key = None
-    elif msg.HasField("buttonsResponseMessage"):
-        response = msg.buttonsResponseMessage
-        quoted = response.contextInfo.stanzaID
-        key = response.selectedButtonID
-    else:
+    if not (pressed := pressed_button(event.message.Message)):
         return
-    if not (labels := native_button_tests.get(quoted)):
+    key, quoted = pressed
+    if not (test := native_button_tests.get(quoted)):
         return
+    if not sender_ids(event) & test["by"]:
+        return
+    labels = test["labels"]
     await event.reply(f"*{labels.get(key, key or 'An unknown button')} was pressed.*")
 
 

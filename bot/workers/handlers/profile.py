@@ -1,9 +1,12 @@
 import asyncio
+import time
+import uuid
 from inspect import getdoc
 
 import enka
 
 from bot.config import bot, conf
+from bot.utils.buttons import on_button, send_buttons, sender_ids
 from bot.utils.db_utils import save2db2
 from bot.utils.hoyo_cards import build_card, profile_card
 from bot.utils.log_utils import logger
@@ -53,6 +56,11 @@ ERRORS = {
 
 _clients = {}
 _client_lock = asyncio.Lock()
+# Profiles whose character buttons can still be pressed: token -> showcase
+# and how to draw its cards; the oldest go first, and they expire
+PROFILE_BUTTONS_MAX = 50
+PROFILE_BUTTONS_TTL = 3600
+_profile_buttons: dict[str, dict] = {}
 
 
 async def get_client(game: str):
@@ -145,6 +153,70 @@ async def pick_characters(event, characters: list) -> list:
     return [
         characters[i] for i in sorted(k for k in state["chosen"] if isinstance(k, int))
     ]
+
+
+async def send_character_buttons(event, game, characters, owner, uid, scale):
+    """Buttons under a profile card, one per showcase character"""
+    now = time.time()
+    for token in [
+        t for t, p in _profile_buttons.items() if now - p["at"] > PROFILE_BUTTONS_TTL
+    ]:
+        _profile_buttons.pop(token, None)
+    while len(_profile_buttons) >= PROFILE_BUTTONS_MAX:
+        _profile_buttons.pop(next(iter(_profile_buttons)))
+    token = uuid.uuid4().hex[:10]
+    _profile_buttons[token] = {
+        "game": game,
+        "characters": list(characters),
+        "owner": owner,
+        "uid": uid,
+        "scale": scale,
+        "at": now,
+        # Only whoever sent the command can press them
+        "by": sender_ids(event),
+    }
+    await send_buttons(
+        event.chat.jid,
+        "Build cards:",
+        [(f"profile:{token}:{i}", c.name) for i, c in enumerate(characters)],
+    )
+
+
+@on_button("profile")
+async def character_button(event, data: str):
+    """Sends the build card of the character whose button was pressed"""
+    token, _, index = data.partition(":")
+    profile = _profile_buttons.get(token)
+    if profile and not sender_ids(event) & profile["by"]:
+        return
+    if not profile or time.time() - profile["at"] > PROFILE_BUTTONS_TTL:
+        name = GAMES.get(profile["game"] if profile else "", {}).get("name", "")
+        return await event.reply(
+            f"*That profile has expired; send {conf.CMD_PREFIX}gi, "
+            f"{conf.CMD_PREFIX}hsr or {conf.CMD_PREFIX}zzz again.*"
+            if not name
+            else f"*That {name} profile has expired; send it again.*"
+        )
+    characters = profile["characters"]
+    if not index.isdigit() or int(index) >= len(characters):
+        return
+    character = characters[int(index)]
+    status = await event.reply(f"*Drawing {character.name}'s card…*")
+    try:
+        await event.reply_photo(
+            await build_card(
+                profile["game"],
+                character,
+                profile["owner"],
+                profile["uid"],
+                profile["scale"],
+            )
+        )
+    except Exception as e:
+        await logger(Exception)
+        await event.reply(f"*Error:*\n{e}")
+    finally:
+        await status.delete()
 
 
 async def save_uid(event, game: str, uid: str):
@@ -259,12 +331,14 @@ async def game_profile(event, args, game: str):
             info['level']} {
             player.level} · {uid_text}"
         caption += (
-            "\nAdd -c to pick characters for build cards, or a number or name for one."
+            "\nTap a character below for their build card, or add -c to pick several."
             if characters
             else "\n_No characters are public in their showcase._"
         )
         card = await profile_card(game, player, characters, uid_text, scale)
         await event.reply_photo(card, caption)
+        if characters:
+            await send_character_buttons(event, game, characters, owner, uid, scale)
     except Exception as e:
         await logger(Exception)
         await event.react("❌")
@@ -286,6 +360,7 @@ async def gi_profile(event, args, client):
     Usage: gi [uid] [character] [-c] [-2x] [-hide]
         uid: a Genshin UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
+            (or tap a character's button under the profile card)
         -c : pick characters for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
@@ -308,6 +383,7 @@ async def hsr_profile(event, args, client):
     Usage: hsr [uid] [character] [-c] [-2x] [-hide]
         uid: a Star Rail UID; leave it out to use the one you saved
         character: a showcase number or name, to go straight to its build card
+            (or tap a character's button under the profile card)
         -c : pick characters for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
@@ -331,6 +407,7 @@ async def zzz_profile(event, args, client):
     Usage: zzz [uid] [agent] [-c] [-2x] [-hide]
         uid: a ZZZ UID; leave it out to use the one you saved
         agent: a showcase number or name, to go straight to its build card
+            (or tap an agent's button under the profile card)
         -c : pick agents for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
