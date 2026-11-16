@@ -403,7 +403,7 @@ async def zzz_profile(event, args, client):
     Usage: zzz [uid] [agent] [-c] [-2x] [-hide]
         uid: a ZZZ UID; leave it out to use the one you saved
         agent: a showcase number or name, to go straight to its build card
-            (or tap a agent's button under the profile card)
+            (or tap an agent's button under the profile card)
         -c : pick agents for build cards from a poll; tick as many as you
             like, and their cards are sent 15 seconds after your last tick.
             With only one in the showcase, its card is sent straight away
