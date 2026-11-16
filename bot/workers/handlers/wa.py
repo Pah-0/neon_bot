@@ -12,14 +12,12 @@ from dataclasses import dataclass
 from datetime import datetime as dt
 from os.path import splitext as split_ext
 
-import torch
 from clean_links.clean import clean_url
 from neonize.exc import DownloadError
 from neonize.utils.enum import MediaType
 from neonize.utils.ffmpeg import AFFmpeg
 from neonize.utils.jid import Jid2String
 from PIL import Image
-from RealESRGAN import RealESRGAN
 from urlextract import URLExtract
 from wand.image import Image as wand_image
 
@@ -1239,6 +1237,11 @@ async def upscale_image(event: Event, args: str, client):
                 "*Command can only be used when replying to an image.*"
             )
         if not conf.MODAL_UPSCALE_API and bot.disable_cic:
+            if not bot.local_upscale:
+                return await event.reply(
+                    "*Upscaling needs MODAL_UPSCALE_API, or the local upscaler "
+                    "(requirements-upscale.txt).*"
+                )
             return await event.reply("*CPU heavy commands are currently disabled.*")
         replied = event.reply_to_message
         if replied.document:
@@ -1318,6 +1321,10 @@ async def upscale_image(event: Event, args: str, client):
             return (await upscale_batch([img], 1800, model))[0]
 
         async def local_upscale(img: bytes) -> bytes:
+            # Optional install, imported only when used
+            import torch
+            from RealESRGAN import RealESRGAN
+
             device = torch.device(
                 "cuda" if torch.cuda.is_available() and not conf.NO_GPU else "cpu"
             )
