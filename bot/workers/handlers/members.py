@@ -1,13 +1,10 @@
-import re
 from inspect import getdoc
-from urllib.parse import urlsplit
 
 from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 
 from bot import bot, jid
-from bot.others.exceptions import StopAutoHandlers
 from bot.utils.db_utils import save2db2
-from bot.utils.events import SEQUENTIAL_AUTO, Event
+from bot.utils.events import Event
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     get_args,
@@ -23,13 +20,6 @@ ADD_ERRORS = {
     409: "is already in the group",
     500: "can't be added; the group is full",
 }
-# Links with a scheme or www., or bare domains on common TLDs (chat.whatsapp.com…);
-# not email addresses
-LINK_RE = re.compile(
-    r"(?i)\b(?:https?://|www\.)[^\s<>]+"
-    r"|(?<![@\w.-])(?:[a-z0-9-]+\.)+(?:com|net|org|io|gg|me|ly|co|xyz|app|dev|link|tv|info"
-    r"|ru|in|us|uk|be|to|site|online|store|shop|club|live|top|cc|ws)\b(?:/[^\s<>]*)?"
-)
 
 
 def find_member(user: str, participants):
@@ -503,111 +493,3 @@ async def decline_banned_request(gc_msg):
         )
     except Exception:
         await logger(Exception)
-
-
-def link_hosts(text: str) -> list[str]:
-    """The host of each link in text, lowercased and without www."""
-    hosts = []
-    for match in LINK_RE.finditer(text):
-        link = match.group(0)
-        if "://" not in link:
-            link = "http://" + link
-        host = (urlsplit(link).hostname or "").removeprefix("www.")
-        if host:
-            hosts.append(host)
-    return hosts
-
-
-def is_allowed(host: str, allowed: set) -> bool:
-    """Whether host is an allowed domain or a subdomain of one"""
-    return any(host == a or host.endswith("." + a) for a in allowed)
-
-
-async def antilink(event: Event, args, client):
-    """
-    [Owner | Sudo | Admin] Auto-delete messages with links in this group.
-    Group only; the bot must be a group admin. Owner, sudoers and group
-    admins can still post links. With no arguments, shows the setting.
-
-    Usage: antilink on | off
-           antilink -allow domain ... : let links to these domains (and their
-               subdomains) through, e.g. -allow youtube.com x.com
-           antilink -rm domain ... : stop allowing them
-    """
-    group_info, _ = await admin_check(event, client)
-    if not group_info:
-        return
-    flags, rest = get_args(
-        ["-allow", "store_true"],
-        ["-rm", "store_true"],
-        to_parse=args or "",
-        get_unknown=True,
-    )
-    settings = bot.group_dict.setdefault(event.chat.id, {})
-    allowed: set = settings.setdefault("link_allow", set())
-    words = rest.split()
-    if flags.allow or flags.rm:
-        domains = {
-            d.lower().removeprefix("www.").strip("/")
-            for w in words
-            for d in [urlsplit(w if "://" in w else "http://" + w).hostname or ""]
-            if d
-        }
-        if not domains:
-            return await event.reply(getdoc(antilink))
-        if flags.allow:
-            allowed |= domains
-        else:
-            allowed -= domains
-        await save2db2(bot.group_dict, "groups")
-    elif words and words[0].lower() in ("on", "off"):
-        settings["antilink"] = words[0].lower() == "on"
-        await save2db2(bot.group_dict, "groups")
-    elif words:
-        return await event.reply(getdoc(antilink))
-    state = "on" if settings.get("antilink") else "off"
-    note = f"*Link auto-delete is {state}.*"
-    if allowed:
-        note += f"\n*Allowed:* {', '.join(sorted(allowed))}"
-    await event.reply(note)
-
-
-async def delete_links(event: Event, _, client):
-    """
-    Deletes messages with links from members who aren't owner, sudoers or
-    group admins, where antilink is on and the bot is a group admin.
-    AUTO FUNCTION
-    """
-    if not event.chat.is_group:
-        return
-    settings = bot.group_dict.get(event.chat.id, {})
-    if not settings.get("antilink"):
-        return
-    if not (text := (event.text or event.caption)):
-        return
-    allowed = settings.get("link_allow") or set()
-    if not [h for h in link_hosts(text) if not is_allowed(h, allowed)]:
-        return
-    user = event.from_user.id
-    if user_is_privileged(user):
-        return
-    try:
-        group_info = await client.get_group_info(event.chat.jid)
-    except Exception:
-        # Never delete when we can't check for admins
-        await logger(Exception)
-        return
-    participants = group_info.Participants
-    if user_is_admin(user, participants) or not user_is_admin(
-        bot.client.me.JID.User, participants
-    ):
-        return
-    try:
-        await event.delete()
-    except Exception:
-        await logger(Exception)
-        return
-    raise StopAutoHandlers("message with a link was deleted")
-
-
-bot.add_handler(delete_links, SEQUENTIAL_AUTO)
