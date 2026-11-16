@@ -143,7 +143,7 @@ def filter_matches(text: str, trigger: str, rule: dict) -> bool:
         return all(w in words for w in trigger.split())
     if rule.get("word"):
         return re.search(rf"(?<!\w){
-                re.escape(trigger)}(?!\w)", text) is not None
+            re.escape(trigger)}(?!\w)", text) is not None
     return trigger in text
 
 
