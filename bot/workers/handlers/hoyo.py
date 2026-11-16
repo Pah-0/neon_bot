@@ -83,37 +83,48 @@ def remember(event, **data) -> str:
     return token
 
 
-async def show_entry(event, entry: dict, level, sections: list[str]):
+async def show_entry(
+    event,
+    entry: dict,
+    level,
+    sections: list[str],
+    card: bool = True,
+    sent: tuple[str, ...] = (),
+):
     """
-    Sends an entry's card and the sections asked for; under a character's,
-    buttons for the sections not sent yet
+    Sends an entry's card (unless not card) and the sections asked for; under
+    a character's, buttons for the sections not sent yet (sent holds those
+    sent earlier)
     """
-    status = await event.reply(f"*Fetching {label(entry)}…*")
     try:
-        image, caption, extra = await get_details(entry, level)
-        names = SECTIONS[entry["game"]]
-        if sections and entry["kind"] == "character":
-            caption += (
-                "\n_"
-                + ", ".join(names[s] for s in dict.fromkeys(sections))
-                + " below._"
-            )
-        if image:
-            await event.reply_photo(image, caption)
-        else:
-            await event.reply(caption)
-        for section in dict.fromkeys(sections):
-            if not (text := extra.get(section)):
-                continue
-            title = f"*{label(entry)}: {names[section]}*\n\n"
-            for chunk in split_text(
-                title + text, "\n\n", list_size=bot.max_message_length - 100
-            ):
-                await event.reply(chunk.strip())
-                await asyncio.sleep(1)
-        missing = [s for s in ("t", "c") if s not in sections and extra.get(s)]
+        # A reaction while working, rather than a status message
+        async with event.react("⏳"):
+            image, caption, extra = await get_details(entry, level)
+            names = SECTIONS[entry["game"]]
+            if card:
+                if sections and entry["kind"] == "character":
+                    caption += (
+                        "\n_"
+                        + ", ".join(names[s] for s in dict.fromkeys(sections))
+                        + " below._"
+                    )
+                if image:
+                    await event.reply_photo(image, caption)
+                else:
+                    await event.reply(caption)
+            for section in dict.fromkeys(sections):
+                if not (text := extra.get(section)):
+                    continue
+                title = f"*{label(entry)}: {names[section]}*\n\n"
+                for chunk in split_text(
+                    title + text, "\n\n", list_size=bot.max_message_length - 100
+                ):
+                    await event.reply(chunk.strip())
+                    await asyncio.sleep(1)
+        done = set(sent) | set(sections)
+        missing = [s for s in ("t", "c") if s not in done and extra.get(s)]
         if entry["kind"] == "character" and missing:
-            token = remember(event, entry=entry, level=level)
+            token = remember(event, entry=entry, level=level, sent=tuple(done))
             buttons = [(f"search:{token}:sec:{s}", names[s]) for s in missing]
             if len(missing) == 2:
                 buttons.append((f"search:{token}:sec:tc", "Both"))
@@ -122,8 +133,6 @@ async def show_entry(event, entry: dict, level, sections: list[str]):
         await logger(Exception)
         await event.react("❌")
         await event.reply(f"*Error:*\n{e}")
-    finally:
-        await status.delete()
 
 
 @on_button("search")
@@ -142,7 +151,15 @@ async def search_button(event, data: str):
         entry = saved["results"][int(value)]
         await show_entry(event, entry, saved["level"], saved["sections"])
     elif action == "sec" and value in ("t", "c", "tc"):
-        await show_entry(event, saved["entry"], saved["level"], list(value))
+        # Only the sections: the card was sent with the buttons
+        await show_entry(
+            event,
+            saved["entry"],
+            saved["level"],
+            list(value),
+            card=False,
+            sent=saved.get("sent", ()),
+        )
 
 
 async def hoyo_search(event, args, client):
