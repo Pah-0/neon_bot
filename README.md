@@ -85,7 +85,7 @@ The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds` in c
 - `.gi`, `.hsr`, `.zzz` `[uid] [character] [-c] [-2x] [-hide]`: A player's profile card (Genshin: Spiral Abyss, Imaginarium Theater and Stygian Onslaught; Star Rail: Trailblaze and Equilibrium levels and collection; ZZZ: Shiyu Defense, Deadly Assault and Battle Tower medals) with their showcase. A character's number or name after the UID sends its build card; under the profile card each showcase character also gets a button that sends theirs, and `-c` sends a poll to tick several. `-2x` draws the cards at twice the resolution, `-set <uid>` saves your UID for that game, and `-hide` hides it on the cards. Send `.gi -h` (or `.hsr -h`, `.zzz -h`) for the full help.
 
 ### Lookup
-Each sends a poll when several titles match.
+Each sends buttons to pick from when several titles match (or a poll if buttons can't be sent).
 - `.anime [query] [-m]` / `.airing [query]`: Anime info / airing schedule from AniList; `-m` takes a MyAnimeList id.
 - `.manga <title|id> [-ln] [-m]`: Manga, manhwa and manhua from AniList; `-ln` for light novels, `-m` for a MyAnimeList id.
 - `.novel <title> [-wp]`: Web and light novels from MangaUpdates; `-wp` for Wattpad stories.

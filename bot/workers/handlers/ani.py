@@ -1,10 +1,9 @@
 import anilist
 
-from bot.config import bot
 from bot.utils.ani_utils import airing_anim, anime_arch
+from bot.utils.buttons import choose, sender_ids
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import construct_msg_and_evt, get_args, user_is_allowed
-from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
+from bot.utils.msg_utils import get_args, user_is_allowed
 
 ani_client = anilist.AsyncClient()
 
@@ -12,7 +11,8 @@ ani_client = anilist.AsyncClient()
 async def airing(event, args, client):
     """
     Get the airing schedule of an anime from AniList.
-    If a title matches several anime, a poll is sent to pick one.
+    If a title matches several anime, buttons are sent to pick one
+    (or a poll if they can't be sent).
 
     Arguments:
         anime_title - Title of the anime
@@ -39,7 +39,8 @@ async def airing(event, args, client):
 async def anime(event, args, client):
     """
     Fetch anime info from AniList.
-    If a title matches several anime, a poll is sent to pick one.
+    If a title matches several anime, buttons are sent to pick one
+    (or a poll if they can't be sent).
 
     Arguments:
         anime_title - Title of the anime
@@ -77,37 +78,23 @@ async def anime_search(event, args, client):
     if not search_result:
         return None
 
-    button_dict = {}
-    for i, anime in enumerate(search_result, start=1):
-        text = anime.title.english or anime.title.romaji or anime.title.native
-        button_dict.update({anime.id: [f"{i}. {text}", text]})
-    title = (
-        f"{event.from_user.name} please select the anime you want to fetch info for."
-    )
-    if i == 1:
-        return f"{anime.id}"
-    poll_msg_, msg_ = await create_sudo_button(
-        title,
-        button_dict,
+    options = {}
+    for anime in search_result:
+        options[anime.id] = (
+            anime.title.english or anime.title.romaji or anime.title.native
+        )
+    if len(options) == 1:
+        return f"{next(iter(options))}"
+    # Buttons, or a poll if they can't be sent
+    choice = await choose(
         event.chat.jid,
-        event.from_user.id,
-        1,
-        None,
-        event.message,
+        f"{event.from_user.name} please select the anime you want to fetch info for.",
+        options,
+        users=sender_ids(event),
+        poll_user=event.from_user.id,
+        quoted=event.message,
     )
-    msg_id = msg_.ID
-    poll_msg = construct_msg_and_evt(
-        event.chat.id,
-        bot.client.me.JID.User,
-        msg_id,
-        None,
-        event.chat.server,
-        bot.client.me.JID.Server,
-        poll_msg_,
-    )
-    results = await wait_for_button_response(msg_id)
-    await poll_msg.delete()
-    if not results:
+    if not choice:
         await event.reply("Time out!")
         return ""
-    return f"{results[0]}"
+    return f"{choice}"
