@@ -142,7 +142,8 @@ LOGS.info("Starting...")
 
 bot.ignore_pm = conf.IGNORE_PM
 bot.block_nsfw = conf.BLOCK_NSFW
-# Local upscaling needs the optional Real-ESRGAN install (requirements-upscale.txt)
+# Local upscaling needs the optional Real-ESRGAN install
+# (requirements-upscale.txt)
 bot.local_upscale = find_spec("RealESRGAN") is not None
 bot.disable_cic = conf.DISABLE_CIP or not bot.local_upscale
 bot.tgp_client = TelegraphPoster(use_api=True, telegraph_api_url=conf.TELEGRAPH_API)
