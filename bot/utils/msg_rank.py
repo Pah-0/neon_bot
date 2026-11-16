@@ -46,19 +46,22 @@ async def auto_rank():
             if period not in ("weekly", "monthly"):
                 period = ranking["period"] = "weekly"
 
-            # Every group gets its card on Sundays (the weekly window) only;
-            # monthly groups see the standings each week until their reset
-            if not weekly_window:
+            # Monthly groups only send during weekly window
+            if period == "monthly" and not weekly_window:
                 continue
 
             reset = (period == "weekly" and weekly_window) or (
                 period == "monthly" and monthly_window
             )
             server = ranking.get("server")
-            # On reset, the final standings, captioned with the reset notice
-            await send_ranking(
-                group, period, mentions_are_lids=(server == 0), final=reset
-            )
+            # The card on Sundays (the weekly window), on reset the final
+            # standings captioned with the reset notice; text the other days
+            if weekly_window:
+                await send_ranking(
+                    group, period, mentions_are_lids=(server == 0), final=reset
+                )
+            else:
+                await send_ranking_text(group, mentions_are_lids=(server == 0))
 
             await asyncio.sleep(3)
 
@@ -133,13 +136,18 @@ async def send_ranking(group, period, mentions_are_lids, final=False):
         )
     except Exception:
         await logger(Exception)
-        msg = await get_ranking_msg(group, tag=True)
-        if msg:
-            await bot.client.send_message(
-                chat, msg, mentions_are_lids=mentions_are_lids
-            )
+        await send_ranking_text(group, mentions_are_lids)
         if final:
             await bot.client.send_message(chat, notice)
+
+
+async def send_ranking_text(group, mentions_are_lids):
+    """The text leaderboard, with members tagged"""
+    msg = await get_ranking_msg(group, tag=True)
+    if msg:
+        await bot.client.send_message(
+            jid.build_jid(group, "g.us"), msg, mentions_are_lids=mentions_are_lids
+        )
 
 
 def period_dates(since: str | None, period: str, end: datetime.date) -> str:
