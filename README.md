@@ -34,7 +34,7 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 - **Filters**: Automatic responses for specific keywords.
 - **Notes**: Save and retrieve frequently used text or media (`.get name` or `#name`).
 - **Message Ranking**: Track message statistics as leaderboard cards, posted every Sunday, with weekly leaderboards or monthly ones that reset in the first week of each month (🥇, 🥈, 🥉).
-- **Moderation**: Pin/unpin and purge messages; kick, ban and add members in a group or across its community; auto-delete messages from muted users and mass tags.
+- **Moderation**: Pin/unpin and purge messages; kick, ban and add members in a group or across its community; auto-delete messages from muted users, mass tags and links; punishing filters with warnings.
 - **Undelete**: Retrieve deleted messages in a group.
 
 ### 🎉 Fun & Entertainment
@@ -137,6 +137,9 @@ Each sends a poll when several titles match.
 - `.kick <user|@mention> [-c]`: Remove members from the group (or reply to their message); `-c` removes them from every group of the community and the community itself.
 - `.gban [user|@mention] [-c]` / `.gunban <user> [-c]`: Ban members from the group, so they're removed now and again whenever they rejoin, and their requests to join are declined, even before they've joined; with no arguments, list the banned / lift a ban. `-c` bans from (or unbans from) the whole community. Unlike `.ban`, which only stops someone using the bot.
 - `.add <number> [-c]`: Add people to the group by phone number, or to the community (its announcement group) with `-c`; anyone whose privacy settings block it is sent the invite link.
+- `.antilink [on|off] [-allow/-rm <domains>]`: Auto-delete messages with links from members; owner, sudo and admins are exempt, and allowed domains (and their subdomains) go through.
+- `.pfilter <text> [-r reason] [-a] [-m]`: A punishing filter: members' messages containing the text are deleted and they're warned. Reply to a message to use its text as the reason. `.pfilters` lists them and `.del_pfilter <text|all>` removes them.
+- `.warn <user|@mention> [reason] [-d]`: Warn members (replying to their message makes it the reason; `-d` deletes it). At the warn limit they're removed. `.warns`, `.resetwarns` and `.warnlimit <n>` (default 3, `0` never removes) manage warnings.
 - `.enable_atd` / `.disable_atd`: Toggle auto-deleting mass tags.
 - `.ytdl_enable` / `.ytdl_disable`: Toggle the auto downloader in a chat.
 - `.enable` / `.disable`: Enable or disable bot replies in a group.
