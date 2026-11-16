@@ -250,7 +250,8 @@ async def community_remove(event: Event, client, parent, ids: list, ban: bool):
     """
     removed = {user: [] for user in ids}
     skipped, protected_ids = [], set()
-    # Each user's JID as the groups know it, for removing them from the community
+    # Each user's JID as the groups know it, for removing them from the
+    # community
     known = {}
     groups = await client.get_sub_groups(parent)
     for group in groups:
