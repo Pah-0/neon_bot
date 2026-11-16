@@ -414,6 +414,22 @@ def get_sha256(string: str):
     return sha256(string.encode("utf-8")).hexdigest()
 
 
+def space_commands(text: str, prefix: str) -> str:
+    """
+    A command listing as a bulleted list (WhatsApp renders "- " lines as
+    bullets), with a blank line between consecutive commands for
+    readability; a section header stays right above its first command
+    """
+    lines = []
+    for line in text.split("\n"):
+        if line.startswith(prefix):
+            if lines and lines[-1].startswith("- " + prefix):
+                lines.append("")
+            line = "- " + line
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def trunc_string(string: str, limit: int):
     return (string[: limit - 2] + "…") if len(string) > limit else string
 

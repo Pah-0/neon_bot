@@ -1,7 +1,7 @@
 from datetime import datetime as dt
 
 from bot.config import conf
-from bot.utils.bot_utils import get_date_from_ts
+from bot.utils.bot_utils import get_date_from_ts, space_commands
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
@@ -37,7 +37,7 @@ async def getcmds(event, args, client):
 {pre}tools - *Get tools commands*
 {pre}roles - *Get commands for roles*
 {pre}manage - *Get bot and group management commands*"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
@@ -67,7 +67,7 @@ async def game_cmds(event, args, client):
 *Genshin, Star Rail & ZZZ:*
 {pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
 {pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations)*"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
@@ -94,7 +94,7 @@ async def lookup_cmds(event, args, client):
 {pre}novel - *Fetch web and light novel info from MangaUpdates (-wp for Wattpad stories)*
 {pre}fic - *Look up a fanfic on AO3*
 {pre}imdb - *Fetch film and TV series info with IMDb ratings (-movie or -tv to narrow it)*"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
@@ -115,42 +115,53 @@ async def manage_cmds(event, args, client):
             return await event.react("⛔")
     try:
         pre = conf.CMD_PREFIX
-        msg = f"""{pre}sudo - *[Owner] View/Modify sudoers*
+        msg = f"""*Bot:*
+{pre}sudo - *[Owner] View/Modify sudoers*
 {pre}pause - *[Owner] Pauses/Unpauses bot*
 {pre}logs - *[Owner] Get bot logs*
 {pre}ban - *[Owner | Sudo] Prevent a user from using bot*
 {pre}unban - *[Owner | Sudo] Unban a user*
-{pre}call - *[Owner | Sudo] Play replied audio or a link in a voice call (test)*
-{pre}endcall - *[Owner | Sudo] Hang up the voice call*
 {pre}rss - *[Owner | Sudo] Setup bot to auto post RSS feeds*
 {pre}update - *[Owner | Sudo] Update & restarts bot, or test a pull request with -pr <number>*
 {pre}restart - *[Owner | Sudo] Restarts bot*
-{pre}ytdl_* - *[Owner | Sudo | Admin] Disables/Enables auto media download (anyone in PM)*
-{pre}amr_* - *[Owner | Sudo | Admin] Disables/Enables Auto msg ranking*
+{pre}call - *[Owner | Sudo] Play replied audio or a link in a voice call (test)*
+{pre}endcall - *[Owner | Sudo] Hang up the voice call*
+
+*Members:*
 {pre}kick - *[Owner | Sudo | Admin] Remove members from the group (-c from the whole community)*
 {pre}gban - *[Owner | Sudo | Admin] Ban members from the group: removed now and whenever they rejoin (-c for the whole community; no arguments lists them)*
 {pre}gunban - *[Owner | Sudo | Admin] Lift a group ban (-c a community ban)*
 {pre}add - *[Owner | Sudo | Admin] Add people to the group by number, or -c to the community (sends the invite link if their privacy blocks it)*
-{pre}antilink - *[Owner | Sudo | Admin] Auto-delete links from members (on/off, -allow/-rm domains)*
-{pre}autolock - *[Owner | Sudo | Admin] Make the group admins-only every day between two times, e.g. 22:00 7:00 Africa/Lagos (time zone optional; off to stop)*
-{pre}pfilter - *[Owner | Sudo | Admin] Punishing filter: delete and warn on a word; reply to a message for the reason (-r reason, -a, -m)*
-{pre}pfilters / {pre}del_pfilter - *[Owner | Sudo | Admin] List / remove punishing filters*
+{pre}mute - *[Owner | Sudo | Admin] Auto-delete messages from users, a role's members (-role) or everyone outside a role (-except)*
+
+*Warnings & filters:*
 {pre}warn - *[Owner | Sudo | Admin] Warn members (reply: the message is the reason); removed at the warn limit*
 {pre}warns / {pre}resetwarns / {pre}warnlimit - *[Owner | Sudo | Admin] Show / clear warnings, set the limit (default 3, 0 = never remove)*
+{pre}pfilter - *[Owner | Sudo | Admin] Punishing filter: delete and warn on a word; reply to a message for the reason (-r reason, -a, -m)*
+{pre}pfilters / {pre}del_pfilter - *[Owner | Sudo | Admin] List / remove punishing filters*
+
+*Protection:*
+{pre}antilink - *[Owner | Sudo | Admin] Auto-delete links from members (on/off, -allow/-rm domains)*
 {pre}captcha - *[Owner | Sudo | Admin] New members must solve a captcha or be removed (on/off, -t minutes)*
-{pre}mute - *[Owner | Sudo | Admin] Auto-delete messages from users, a role's members (-role) or everyone outside a role (-except)*
+{pre}autolock - *[Owner | Sudo | Admin] Make the group admins-only every day between two times, e.g. 22:00 7:00 Africa/Lagos (time zone optional; off to stop)*
 {pre}enable_atd - *[Owner | Sudo | Admin] Enables Auto deletion of @all tags*
 {pre}disable_atd - *[Owner | Sudo | Admin] Disables Auto deletion of @all tags*
-{pre}disable - *[Owner | Sudo | Admin] Disable bot in a GC*
+
+*Group:*
 {pre}enable - *[Owner | Sudo | Admin] Enable bot in a GC*
+{pre}disable - *[Owner | Sudo | Admin] Disable bot in a GC*
+{pre}ytdl_* - *[Owner | Sudo | Admin] Disables/Enables auto media download (anyone in PM)*
+{pre}amr_* - *[Owner | Sudo | Admin] Disables/Enables Auto msg ranking*
 {pre}del - *[Owner | Sudo | Admin] Delete the replied message*
 {pre}gc_info - *[Owner | Sudo | Admin] Get group info*
+
+*Dev:*
 {pre}bash - *[Owner | Dev] Run bash commands*
 {pre}eval - *[Owner | Dev] Evaluate python code*
 
 * expands to _ytdl_enable/ytdl_disable_
 * expands to _amr_enable/amr_disable_"""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")

@@ -51,6 +51,7 @@ from bot.utils.bot_utils import (
     same_week,
     screenshot_comments,
     screenshot_page,
+    space_commands,
     split_text,
     sync_to_async,
     turn,
@@ -192,7 +193,7 @@ async def tools(event, args, client):
             f"{s}"
             f"{pre}undel - *Resend recently deleted messages*{s}"
         )
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception:
         await logger(Exception)
         await event.react("❌")

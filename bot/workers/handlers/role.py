@@ -3,7 +3,7 @@ import time
 
 from bot import jid
 from bot.config import bot, conf
-from bot.utils.bot_utils import split_text
+from bot.utils.bot_utils import space_commands, split_text
 from bot.utils.db_utils import save2db2
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
@@ -806,7 +806,7 @@ async def roles(event, args, client):
 Tag a role's members by writing @<name> (or @<name>s) in a group message; each role can be tagged once a minute.
 Users can create up to {MAX_ROLES_PER_USER} roles per group.
 Admins can also mute a role with {pre}mute."""
-        await event.reply(msg)
+        await event.reply(space_commands(msg, pre))
     except Exception:
         await logger(Exception)
         await event.react("❌")
