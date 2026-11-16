@@ -22,7 +22,7 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 - **Sticker Creation**: Convert images, videos, and GIFs into stickers.
 - **Sticker to Image**: Convert stickers back into images or GIFs.
 - **Sticker Kanging**: Rename sticker metadata to your own pack name.
-- **Image Upscaling**: Enhance image quality using Real-ESRGAN, locally or through a Modal endpoint (single images or whole albums).
+- **Image Upscaling**: Enhance image quality using Real-ESRGAN through a Modal endpoint (single images or whole albums), or locally with the optional local upscaler.
 
 ### 👥 Group Management
 - **Greetings**: Custom welcome and goodbye messages for group members.
@@ -163,7 +163,7 @@ The bot can be configured via environment variables or a `.env` file (see `.env.
 | `DB_ID` | `0000` | Database document ID, used when `PH_NUMBER` is not set. |
 | `DEBUG` | `False` | Enable debug logging. |
 | `DEV` | | Phone numbers of developers (allowed to use dev tools). |
-| `DISABLE_CIP` | `False` | Disable CPU-intensive processes (local image upscaling). |
+| `DISABLE_CIP` | `False` | Disable CPU-intensive processes (local image upscaling). Local upscaling is also off when its optional requirements aren't installed. |
 | `IGNORE_PM` | `True` | Ignore private messages. Has no effect if `ALLOWED_CHATS` is set. |
 | `KLIPY_API_KEY` | | API key for GIF and meme search. |
 | `LOG_GROUP` | | Chat ID to send logs and errors to (`id` or `id:server`). |
@@ -195,6 +195,10 @@ The bot can be configured via environment variables or a `.env` file (see `.env.
     ```bash
     pip install -r requirements.txt
     ```
+    For local image upscaling without Modal, also install the optional upscaler (Real-ESRGAN with torch, a large download):
+    ```bash
+    pip install -r requirements-upscale.txt
+    ```
 3.  Configure your environment variables in a `.env` file.
 4.  Run the bot:
     ```bash
@@ -207,6 +211,7 @@ The bot can be configured via environment variables or a `.env` file (see `.env.
     ```bash
     docker build -t neon_bot .
     ```
+    Add `--build-arg LOCAL_UPSCALE=true` to include the local upscaler.
 2.  Run the container:
     ```bash
     docker run -it --env-file .env neon_bot

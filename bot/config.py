@@ -88,6 +88,7 @@ class Runtime_Config:
         self.client = None
         self.current_games_dict = {}
         self.disable_cic = False
+        self.local_upscale = False
         self.docker_deployed = False
         self.filters_dict = {}
         self.gift_dict = {
