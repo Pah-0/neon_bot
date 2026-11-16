@@ -30,6 +30,11 @@ def on_button(prefix: str):
     return register
 
 
+def sender_ids(event) -> set:
+    """Every id a message's sender goes by (LID and number), to match presses"""
+    return {u for u in (event.user.id, event.alt_user.id, event.from_user.id) if u}
+
+
 def label(text: str) -> str:
     return text if len(text) <= MAX_LABEL else text[: MAX_LABEL - 1] + "…"
 

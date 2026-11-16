@@ -6,7 +6,7 @@ from inspect import getdoc
 import enka
 
 from bot.config import bot, conf
-from bot.utils.buttons import on_button, send_buttons
+from bot.utils.buttons import on_button, send_buttons, sender_ids
 from bot.utils.db_utils import save2db2
 from bot.utils.hoyo_cards import build_card, profile_card
 from bot.utils.log_utils import logger
@@ -172,6 +172,8 @@ async def send_character_buttons(event, game, characters, owner, uid, scale):
         "uid": uid,
         "scale": scale,
         "at": now,
+        # Only whoever sent the command can press them
+        "by": sender_ids(event),
     }
     await send_buttons(
         event.chat.jid,
@@ -185,6 +187,8 @@ async def character_button(event, data: str):
     """Sends the build card of the character whose button was pressed"""
     token, _, index = data.partition(":")
     profile = _profile_buttons.get(token)
+    if profile and not sender_ids(event) & profile["by"]:
+        return
     if not profile or time.time() - profile["at"] > PROFILE_BUTTONS_TTL:
         name = GAMES.get(profile["game"] if profile else "", {}).get("name", "")
         return await event.reply(
