@@ -34,7 +34,7 @@ A feature-rich WhatsApp bot built with the [neonize](https://github.com/Pah-0/ne
 - **Filters**: Automatic responses for specific keywords.
 - **Notes**: Save and retrieve frequently used text or media (`.get name` or `#name`).
 - **Message Ranking**: Track message statistics as leaderboard cards, posted every Sunday, with weekly leaderboards or monthly ones that reset in the first week of each month (🥇, 🥈, 🥉).
-- **Moderation**: Pin/unpin and purge messages; kick, ban and add members in a group or across its community; auto-delete messages from muted users, mass tags and links; punishing filters with warnings.
+- **Moderation**: Pin/unpin and purge messages; kick, ban and add members in a group or across its community; auto-delete messages from muted users, mass tags and links; scheduled admins-only hours, punishing filters with warnings, and join captchas.
 - **Undelete**: Retrieve deleted messages in a group.
 
 ### 🎉 Fun & Entertainment
@@ -138,8 +138,10 @@ Each sends a poll when several titles match.
 - `.gban [user|@mention] [-c]` / `.gunban <user> [-c]`: Ban members from the group, so they're removed now and again whenever they rejoin, and their requests to join are declined, even before they've joined; with no arguments, list the banned / lift a ban. `-c` bans from (or unbans from) the whole community. Unlike `.ban`, which only stops someone using the bot.
 - `.add <number> [-c]`: Add people to the group by phone number, or to the community (its announcement group) with `-c`; anyone whose privacy settings block it is sent the invite link.
 - `.antilink [on|off] [-allow/-rm <domains>]`: Auto-delete messages with links from members; owner, sudo and admins are exempt, and allowed domains (and their subdomains) go through.
+- `.autolock <lock> <unlock> [time zone]` / `.autolock off`: Make the group admins-only every day between two times (e.g. `22:00 7:00` or `10pm 7am Africa/Lagos`) and open it again after. The time zone is a name like `Europe/London` or an offset like `UTC+1`; without one, the bot's own is used.
 - `.pfilter <text> [-r reason] [-a] [-m]`: A punishing filter: members' messages containing the text are deleted and they're warned. Reply to a message to use its text as the reason. `.pfilters` lists them and `.del_pfilter <text|all>` removes them.
 - `.warn <user|@mention> [reason] [-d]`: Warn members (replying to their message makes it the reason; `-d` deletes it). At the warn limit they're removed. `.warns`, `.resetwarns` and `.warnlimit <n>` (default 3, `0` never removes) manage warnings.
+- `.captcha [on|off] [-t minutes]`: Members who join through a link or request must send the code from a captcha picture; their other messages are deleted until they do, and they're removed after 3 wrong answers or when time runs out (default 5 minutes). People added by a member, or approved by an admin, are let through.
 - `.enable_atd` / `.disable_atd`: Toggle auto-deleting mass tags.
 - `.ytdl_enable` / `.ytdl_disable`: Toggle the auto downloader in a chat.
 - `.enable` / `.disable`: Enable or disable bot replies in a group.
