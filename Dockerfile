@@ -45,8 +45,11 @@ RUN dnf -qq -y install gcc python3-devel
 # 4. Copy files from repo to home directory
 COPY . .
 
-# 5. Install python3 requirements
-RUN pip3 install -r requirements.txt
+# 5. Install python3 requirements; the local upscaler (torch) only with
+#    --build-arg LOCAL_UPSCALE=true
+ARG LOCAL_UPSCALE=false
+RUN pip3 install -r requirements.txt && \
+    if [ "$LOCAL_UPSCALE" = "true" ]; then pip3 install -r requirements-upscale.txt; fi
 
 # 6. cleanup
 RUN dnf -qq -y history undo last && dnf clean all

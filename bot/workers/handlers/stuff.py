@@ -92,7 +92,7 @@ async def lookup_cmds(event, args, client):
 {pre}airing - *Fetch anime airing info from anilist*
 {pre}manga - *Fetch manga info from AniList (-ln for light novels)*
 {pre}novel - *Fetch web and light novel info from MangaUpdates (-wp for Wattpad stories)*
-{pre}fic - *Look up a fanfic on AO3 (when AO3 lets the bot in)*
+{pre}fic - *Look up a fanfic on AO3*
 {pre}imdb - *Fetch film and TV series info with IMDb ratings (-movie or -tv to narrow it)*"""
         await event.reply(msg)
     except Exception as e:

@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import traceback
+from importlib.util import find_spec
 
 from decouple import config
 from pathlib import Path
@@ -59,10 +60,18 @@ def read_json(path):
         return None
 
 
+def upscale_installed():
+    """Whether the optional local upscaler is installed"""
+    return find_spec("RealESRGAN") is not None
+
+
 def requirements_hash():
     try:
-        return hashlib.sha256(
-            Path("requirements.txt").read_bytes()).hexdigest()
+        data = Path("requirements.txt").read_bytes()
+        # The local upscaler's requirements count only where it's installed
+        if upscale_installed() and Path("requirements-upscale.txt").is_file():
+            data += Path("requirements-upscale.txt").read_bytes()
+        return hashlib.sha256(data).hexdigest()
     except OSError:
         return None
 
@@ -156,6 +165,8 @@ try:
         AUPR or requirements_hash() != old_requirements
     ):
         bashrun(["pip3", "install", "-r", "requirements.txt"])
+        if upscale_installed():
+            bashrun(["pip3", "install", "-r", "requirements-upscale.txt"])
     if update_check.is_file():
         os.remove("update")
 except Exception:

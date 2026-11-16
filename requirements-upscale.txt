@@ -1,0 +1,5 @@
+# Local image upscaling (Real-ESRGAN with torch). Optional: without it,
+# .upscale needs MODAL_UPSCALE_API. Install with
+#   pip3 install -r requirements-upscale.txt
+# or build the Docker image with --build-arg LOCAL_UPSCALE=true
+git+https://github.com/Pah-0/Real-ESRGAN
