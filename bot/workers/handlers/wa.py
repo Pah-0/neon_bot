@@ -60,6 +60,7 @@ from bot.utils.bot_utils import (
     waiting_for_turn,
     write_binary,
 )
+from bot.utils.buttons import pressed_button
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import log, logger
@@ -3471,20 +3472,9 @@ async def native_button_press(event, args, client):
     """
     if not native_button_tests:
         return
-    msg = event.message.Message
-    if msg.HasField("interactiveResponseMessage"):
-        response = msg.interactiveResponseMessage
-        quoted = response.contextInfo.stanzaID
-        try:
-            key = json.loads(response.nativeFlowResponseMessage.paramsJSON).get("id")
-        except (ValueError, AttributeError):
-            key = None
-    elif msg.HasField("buttonsResponseMessage"):
-        response = msg.buttonsResponseMessage
-        quoted = response.contextInfo.stanzaID
-        key = response.selectedButtonID
-    else:
+    if not (pressed := pressed_button(event.message.Message)):
         return
+    key, quoted = pressed
     if not (labels := native_button_tests.get(quoted)):
         return
     await event.reply(f"*{labels.get(key, key or 'An unknown button')} was pressed.*")
