@@ -4,8 +4,9 @@ the .gi/.hsr/.zzz cards, with profile pictures and emoji in names.
 """
 
 import asyncio
+import colorsys
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from .bot_utils import human_format_num, sync_to_async
 from .card_text import draw_rich, load_emojis, profile_picture, rich_width
@@ -58,6 +59,48 @@ def avatar_fallback(name: str, colour: tuple) -> Image.Image:
     return image
 
 
+def picture_accent(picture: Image.Image | None) -> tuple:
+    """
+    The group picture's most common vivid colour, brightened or dimmed to sit
+    behind white text; ACCENT if the picture is unset or mostly grey
+    """
+    if picture is None:
+        return ACCENT
+    small = picture.convert("RGB").resize((64, 64))
+    palette = small.quantize(8).convert("RGB").getcolors(64 * 64) or []
+    best, score = None, 0
+    for count, colour in palette:
+        _, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in colour))
+        # Grey, near-black and near-white areas say little about the picture
+        if s < 0.25 or v < 0.2:
+            continue
+        if count * s > score:
+            best, score = colour, count * s
+    if best is None:
+        return ACCENT
+    h, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in best))
+    r, g, b = colorsys.hsv_to_rgb(h, max(s, 0.45), min(max(v, 0.6), 0.85))
+    return int(r * 255), int(g * 255), int(b * 255)
+
+
+def blurred_backdrop(picture: Image.Image, size: tuple) -> Image.Image:
+    """The picture filling size, blurred and dimmed under the card's rows"""
+    w, h = size
+    # Blurred small and scaled up: as smooth, and cheap on tall cards
+    sw, sh = max(w // 8, 1), max(h // 8, 1)
+    image = picture.convert("RGB")
+    scale = max(sw / image.width, sh / image.height)
+    image = image.resize(
+        (max(int(image.width * scale), sw), max(int(image.height * scale), sh)),
+        Image.Resampling.LANCZOS,
+    )
+    left, top = (image.width - sw) // 2, (image.height - sh) // 2
+    image = image.crop((left, top, left + sw, top + sh))
+    image = image.filter(ImageFilter.GaussianBlur(6))
+    image = image.resize((w, h), Image.Resampling.BICUBIC)
+    return Image.blend(image, Image.new("RGB", (w, h), BACKGROUND), 0.72)
+
+
 def _medal(draw, x: float, y: float, place: int, count: int) -> float:
     """A gold/silver/bronze dot with its count; returns the right edge"""
     colour = PLACE_COLOURS[place]
@@ -75,28 +118,46 @@ def _medal(draw, x: float, y: float, place: int, count: int) -> float:
     return x + 26 + text_width(text, face) + 14
 
 
-def _draw_ranking(data: dict, avatars: dict, emojis: dict) -> bytes:
+def _draw_ranking(
+    data: dict, avatars: dict, emojis: dict, picture: Image.Image | None
+) -> bytes:
     rows = data["rows"][:MAX_ROWS]
     more = len(data["rows"]) - len(rows)
     height = HEADER_H + len(rows) * (ROW_H + ROW_GAP) + (60 if more else 30)
-    card = Image.new("RGB", (CW, height), BACKGROUND)
+    # The group picture, blurred, behind everything, and its colour as accent
+    accent = picture_accent(picture)
+    if picture is not None:
+        card = blurred_backdrop(picture, (CW, height))
+    else:
+        card = Image.new("RGB", (CW, height), BACKGROUND)
     draw = ImageDraw.Draw(card, "RGBA")
 
     # Header: title, group and period, totals
     final = data.get("final")
-    accent = FINAL_ACCENT if final else ACCENT
-    put(
-        card,
-        gradient((CW, HEADER_H), accent + (255,), BACKGROUND + (255,), horizontal=True),
-    )
-    put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (255,)))
+    if picture is not None:
+        # Faded to clear, so the backdrop shows through below and to the right
+        put(
+            card,
+            gradient((CW, HEADER_H), accent + (190,), accent + (0,), horizontal=True),
+        )
+        put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (90,)))
+    else:
+        put(
+            card,
+            gradient(
+                (CW, HEADER_H), accent + (255,), BACKGROUND + (255,), horizontal=True
+            ),
+        )
+        put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (255,)))
     title = "Final Standings" if final else "Message Leaderboard"
     draw.text((40, 34), title, font=font(46, True), fill=WHITE)
     if final:
         label = final.upper()
         face = font(20, True)
         lw = text_width(label, face) + 32
-        panel(card, (CW - 40 - lw, 44, CW - 40, 80), radius=18, fill=accent + (255,))
+        panel(
+            card, (CW - 40 - lw, 44, CW - 40, 80), radius=18, fill=FINAL_ACCENT + (255,)
+        )
         draw.text((CW - 40 - lw + 16, 49), label, font=face, fill=(20, 20, 30, 255))
     subtitle = " · ".join(p for p in (data.get("group"), data.get("period")) if p)
     if subtitle:
@@ -132,7 +193,7 @@ def _draw_ranking(data: dict, avatars: dict, emojis: dict) -> bytes:
         )
 
         # Profile picture, ringed in the place colour for the top three
-        avatar = avatars.get(row["user"]) or avatar_fallback(row["name"], ACCENT)
+        avatar = avatars.get(row["user"]) or avatar_fallback(row["name"], accent)
         if colour:
             draw.ellipse((108, y + 8, 176, y + 76), fill=colour + (255,))
         paste_fit(card, avatar, (112, y + 12, 172, y + 72), circle=True)
@@ -147,7 +208,7 @@ def _draw_ranking(data: dict, avatars: dict, emojis: dict) -> bytes:
         draw.rounded_rectangle(
             (192, y + 48, 192 + NAME_W * share, y + 56),
             4,
-            fill=(colour or ACCENT) + (255,),
+            fill=(colour or accent) + (255,),
         )
         mx = 192
         for medal_place in (1, 2, 3):
@@ -183,15 +244,19 @@ def _draw_ranking(data: dict, avatars: dict, emojis: dict) -> bytes:
 
 async def ranking_card(data: dict) -> bytes:
     """
-    The leaderboard card. data: {group, period, total, members, rows: [{user,
-    jid, place, name, count, medals: {1: n, 2: n, 3: n}}]}
+    The leaderboard card. data: {group, jid, period, total, members, rows:
+    [{user, jid, place, name, count, medals: {1: n, 2: n, 3: n}}]}; jid is the
+    group's, for its picture
     """
     rows = data["rows"][:MAX_ROWS]
     names = [data.get("group") or "", *(r["name"] for r in rows)]
     await ensure_fonts(*names)
-    pictures, emojis = await asyncio.gather(
+    group_jid = data.get("jid")
+    group_picture = profile_picture(group_jid) if group_jid else asyncio.sleep(0)
+    pictures, emojis, picture = await asyncio.gather(
         asyncio.gather(*(profile_picture(r["jid"]) for r in rows)),
         load_emojis(*names),
+        group_picture,
     )
     avatars = {r["user"]: p for r, p in zip(rows, pictures)}
-    return await sync_to_async(_draw_ranking, data, avatars, emojis)
+    return await sync_to_async(_draw_ranking, data, avatars, emojis, picture)

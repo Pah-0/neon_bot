@@ -2242,7 +2242,7 @@ PERIODS = {"weekly": "This week", "monthly": "This month"}
 
 async def get_ranking_data(chat_id, full=False):
     """
-    The group's leaderboard: {group, period, total, members, server, rows:
+    The group's leaderboard: {group, jid, period, total, members, server, rows:
     [{user, jid, place, name, count, medals}]}, top 10 unless full
     """
     group = bot.group_dict.setdefault(chat_id, {})
@@ -2273,13 +2273,15 @@ async def get_ranking_data(chat_id, full=False):
                 "medals": {p: stats.get(p, 0) for p in (1, 2, 3) if stats.get(p)},
             }
         )
+    group_jid = wa_jid.build_jid(chat_id, "g.us")
     try:
-        info = await bot.client.get_group_info(wa_jid.build_jid(chat_id, "g.us"))
+        info = await bot.client.get_group_info(group_jid)
         group_name = info.GroupName.Name
     except Exception:
         group_name = ""
     return {
         "group": group_name,
+        "jid": group_jid,
         "period": PERIODS.get(msg_rank_dict.get("period"), ""),
         "total": msg_rank_dict.get("total") or 0,
         "members": len(counts),
