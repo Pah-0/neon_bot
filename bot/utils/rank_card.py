@@ -290,7 +290,9 @@ def _draw_ranking(
         mx = 192
         for medal_place in (1, 2, 3):
             if row["medals"].get(medal_place):
-                mx = _medal(card, draw, mx, y + 58, medal_place, row["medals"][medal_place])
+                mx = _medal(
+                    card, draw, mx, y + 58, medal_place, row["medals"][medal_place]
+                )
 
         # Count, right-aligned
         count = human_format_num(row["count"])
