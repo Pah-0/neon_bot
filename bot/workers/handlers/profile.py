@@ -315,7 +315,10 @@ async def game_profile(event, args, game: str):
                     )
             return
 
-        caption = f"*{player.nickname}* · {info['level']} {player.level} · {uid_text}"
+        caption = f"*{
+            player.nickname}* · {
+            info['level']} {
+            player.level} · {uid_text}"
         caption += (
             "\nTap a character below for their build card, or add -c to pick several."
             if characters
