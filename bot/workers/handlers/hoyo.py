@@ -96,30 +96,31 @@ async def show_entry(
     a character's, buttons for the sections not sent yet (sent holds those
     sent earlier)
     """
-    status = await event.reply(f"*Fetching {label(entry)}…*")
     try:
-        image, caption, extra = await get_details(entry, level)
-        names = SECTIONS[entry["game"]]
-        if card:
-            if sections and entry["kind"] == "character":
-                caption += (
-                    "\n_"
-                    + ", ".join(names[s] for s in dict.fromkeys(sections))
-                    + " below._"
-                )
-            if image:
-                await event.reply_photo(image, caption)
-            else:
-                await event.reply(caption)
-        for section in dict.fromkeys(sections):
-            if not (text := extra.get(section)):
-                continue
-            title = f"*{label(entry)}: {names[section]}*\n\n"
-            for chunk in split_text(
-                title + text, "\n\n", list_size=bot.max_message_length - 100
-            ):
-                await event.reply(chunk.strip())
-                await asyncio.sleep(1)
+        # A reaction while working, rather than a status message
+        async with event.react("⏳"):
+            image, caption, extra = await get_details(entry, level)
+            names = SECTIONS[entry["game"]]
+            if card:
+                if sections and entry["kind"] == "character":
+                    caption += (
+                        "\n_"
+                        + ", ".join(names[s] for s in dict.fromkeys(sections))
+                        + " below._"
+                    )
+                if image:
+                    await event.reply_photo(image, caption)
+                else:
+                    await event.reply(caption)
+            for section in dict.fromkeys(sections):
+                if not (text := extra.get(section)):
+                    continue
+                title = f"*{label(entry)}: {names[section]}*\n\n"
+                for chunk in split_text(
+                    title + text, "\n\n", list_size=bot.max_message_length - 100
+                ):
+                    await event.reply(chunk.strip())
+                    await asyncio.sleep(1)
         done = set(sent) | set(sections)
         missing = [s for s in ("t", "c") if s not in done and extra.get(s)]
         if entry["kind"] == "character" and missing:
@@ -132,8 +133,6 @@ async def show_entry(
         await logger(Exception)
         await event.react("❌")
         await event.reply(f"*Error:*\n{e}")
-    finally:
-        await status.delete()
 
 
 @on_button("search")

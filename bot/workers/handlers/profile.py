@@ -201,22 +201,21 @@ async def character_button(event, data: str):
     if not index.isdigit() or int(index) >= len(characters):
         return
     character = characters[int(index)]
-    status = await event.reply(f"*Drawing {character.name}'s card…*")
     try:
-        await event.reply_photo(
-            await build_card(
-                profile["game"],
-                character,
-                profile["owner"],
-                profile["uid"],
-                profile["scale"],
+        async with event.react("⏳"):
+            await event.reply_photo(
+                await build_card(
+                    profile["game"],
+                    character,
+                    profile["owner"],
+                    profile["uid"],
+                    profile["scale"],
+                )
             )
-        )
     except Exception as e:
         await logger(Exception)
+        await event.react("❌")
         await event.reply(f"*Error:*\n{e}")
-    finally:
-        await status.delete()
 
 
 async def save_uid(event, game: str, uid: str):
@@ -272,22 +271,17 @@ async def game_profile(event, args, game: str):
     if not uid:
         return await event.reply(help_text)
     choice = " ".join(words)
-    status = None
     try:
-        shown = uid if not hide else "that UID"
-        status = await event.reply(
-            f"*Fetching the {info['name']} profile for {shown}…*"
-        )
-        client = await get_client(game)
-        try:
-            showcase = await client.fetch_showcase(uid)
-        except enka.errors.EnkaAPIError as e:
-            for error, msg in ERRORS.items():
-                if isinstance(e, error):
-                    await status.edit(msg.format(name=info["name"]))
-                    status = None
-                    return
-            raise
+        # A reaction while working, rather than status messages
+        async with event.react("⏳"):
+            client = await get_client(game)
+            try:
+                showcase = await client.fetch_showcase(uid)
+            except enka.errors.EnkaAPIError as e:
+                for error, msg in ERRORS.items():
+                    if isinstance(e, error):
+                        return await event.reply(msg.format(name=info["name"]))
+                raise
         player, characters = showcase.player, showcase_of(game, showcase)
         uid_text = "UID: [Hidden]" if hide else f"UID {uid}"
         owner = f"{player.nickname} · {uid_text}"
@@ -295,21 +289,19 @@ async def game_profile(event, args, game: str):
         if choice:
             character = find_character(characters, choice)
             if character is None:
-                await status.edit(f"*{choice} isn't in {player.nickname}'s showcase.*")
-                status = None
-                return
-            await status.edit(f"*Drawing {character.name}'s card…*")
-            return await event.reply_photo(
-                await build_card(game, character, owner, uid, scale)
-            )
+                return await event.reply(
+                    f"*{choice} isn't in {player.nickname}'s showcase.*"
+                )
+            async with event.react("⏳"):
+                return await event.reply_photo(
+                    await build_card(game, character, owner, uid, scale)
+                )
 
         if pick:
             if not characters:
-                await status.edit("*No characters are public in their showcase.*")
-                status = None
-                return
-            await status.delete()
-            status = None
+                return await event.reply(
+                    "*No characters are public in their showcase.*"
+                )
             # With one character there's nothing to pick
             chosen = (
                 characters
@@ -317,37 +309,27 @@ async def game_profile(event, args, game: str):
                 else await pick_characters(event, characters)
             )
             for character in chosen:
-                status = await event.reply(f"*Drawing {character.name}'s card…*")
-                await event.reply_photo(
-                    await build_card(game, character, owner, uid, scale)
-                )
-                await status.delete()
-                status = None
+                async with event.react("⏳"):
+                    await event.reply_photo(
+                        await build_card(game, character, owner, uid, scale)
+                    )
             return
 
-        await status.edit("*Drawing the profile card…*")
-        caption = f"*{
-            player.nickname}* · {
-            info['level']} {
-            player.level} · {uid_text}"
+        caption = f"*{player.nickname}* · {info['level']} {player.level} · {uid_text}"
         caption += (
             "\nTap a character below for their build card, or add -c to pick several."
             if characters
             else "\n_No characters are public in their showcase._"
         )
-        card = await profile_card(game, player, characters, uid_text, scale)
-        await event.reply_photo(card, caption)
+        async with event.react("⏳"):
+            card = await profile_card(game, player, characters, uid_text, scale)
+            await event.reply_photo(card, caption)
         if characters:
             await send_character_buttons(event, game, characters, owner, uid, scale)
     except Exception as e:
         await logger(Exception)
         await event.react("❌")
-        if status:
-            await status.edit(f"*Error:*\n{e}")
-            status = None
-    finally:
-        if status:
-            await status.delete()
+        await event.reply(f"*Error:*\n{e}")
 
 
 async def gi_profile(event, args, client):

@@ -71,33 +71,29 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
     info(id)'s picture and caption; direct, if given, is an id to skip the
     search
     """
-    status = None
     try:
         if direct:
             key = direct
         else:
-            status = await event.reply(f"*Searching for {query}…*")
-            results = await search(query)
-            await status.delete()
-            status = None
+            # A reaction while working, rather than a status message
+            async with event.react("⏳"):
+                results = await search(query)
             if not results:
                 return await event.reply(
                     f"*No {what} found.*\nYou searched for *{query}*."
                 )
             if not (key := await pick(event, results, what)):
                 return await event.reply("Time out!")
-        image, caption = await info(key)
-        if image:
-            await event.reply_photo(image, caption)
-        else:
-            await event.reply(caption)
+        async with event.react("⏳"):
+            image, caption = await info(key)
+            if image:
+                await event.reply_photo(image, caption)
+            else:
+                await event.reply(caption)
     except Exception as e:
         await logger(Exception)
         await event.react("❌")
         await event.reply(f"*Error:*\n{e}")
-    finally:
-        if status:
-            await status.delete()
 
 
 async def manga(event, args, client):
