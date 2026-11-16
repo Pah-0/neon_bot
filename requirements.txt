@@ -16,6 +16,7 @@ html_telegraph_poster
 humanize
 lxml[html_clean]
 multicolorcaptcha
+Pillow
 pymongo
 py3langid
 python-decouple
@@ -27,9 +28,8 @@ w3lib
 Wand
 yt-dlp[default,curl-cffi]
 zendriver
-git+https://github.com/Pah-0/neonize@patch-1
+git+https://github.com/Pah-0/neonize@0.3.13.3
 git+https://github.com/Pah-0/python-anilist
-git+https://github.com/Pah-0/Real-ESRGAN
 git+https://github.com/biggestsonicfan/yt-dlp-community-plugin
 objection_engine[languages] @ git+https://github.com/Pah-0/objection_engine
 #Snyk pins 
