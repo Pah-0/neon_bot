@@ -5,6 +5,7 @@ the .gi/.hsr/.zzz cards, with profile pictures and emoji in names.
 
 import asyncio
 import colorsys
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -101,17 +102,93 @@ def blurred_backdrop(picture: Image.Image, size: tuple) -> Image.Image:
     return Image.blend(image, Image.new("RGB", (w, h), BACKGROUND), 0.72)
 
 
-def _medal(draw, x: float, y: float, place: int, count: int) -> float:
-    """A gold/silver/bronze dot with its count; returns the right edge"""
-    colour = PLACE_COLOURS[place]
-    draw.ellipse((x, y + 3, x + 20, y + 23), fill=colour + (255,))
-    face = font(13, True)
-    draw.text(
-        (x + 10 - text_width(str(place), face) / 2, y + 5),
-        str(place),
-        font=face,
-        fill=(20, 20, 30, 255),
+def shade(colour: tuple, factor: float) -> tuple:
+    """colour lightened towards white (factor > 1) or darkened (factor < 1)"""
+    if factor >= 1:
+        return tuple(int(c + (255 - c) * (factor - 1)) for c in colour)
+    return tuple(int(c * factor) for c in colour)
+
+
+@lru_cache(maxsize=32)
+def medal(colour: tuple, size: int, label: str, text_size: int) -> Image.Image:
+    """
+    A medal of size, with its shadow in a margin of size // 8 around it: a
+    darker rim, a face lit from the top left with a gloss, and an engraved
+    ring and label
+    """
+    # Drawn 4× larger and shrunk, for smooth edges
+    big, pad = size * 4, size // 8 * 4
+    image = Image.new("RGBA", (big + 2 * pad,) * 2, (0, 0, 0, 0))
+    shadow = Image.new("L", image.size, 0)
+    ImageDraw.Draw(shadow).ellipse(
+        (pad, pad + big // 14, pad + big - 1, pad + big - 1 + big // 14), fill=110
     )
+    shadow = shadow.filter(ImageFilter.GaussianBlur(big // 20))
+    image.paste((0, 0, 0, 255), (0, 0), shadow)
+
+    disc = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(disc)
+    draw.ellipse((0, 0, big - 1, big - 1), fill=shade(colour, 0.6) + (255,))
+    # The face, light at the top left to the medal colour at the bottom right
+    lit = Image.linear_gradient("L").rotate(45, expand=True)
+    lit = lit.crop(
+        ((lit.width - 256) // 2, (lit.height - 256) // 2)
+        + ((lit.width + 256) // 2, (lit.height + 256) // 2)
+    ).resize((big, big))
+    face = Image.composite(
+        Image.new("RGBA", (big, big), colour + (255,)),
+        Image.new("RGBA", (big, big), shade(colour, 1.45) + (255,)),
+        lit,
+    )
+    rim = big * 0.08
+    mask = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(mask).ellipse((rim, rim, big - 1 - rim, big - 1 - rim), fill=255)
+    disc.paste(face, (0, 0), mask)
+    ring = big * 0.19
+    draw.ellipse(
+        (ring, ring, big - 1 - ring, big - 1 - ring),
+        outline=shade(colour, 0.78) + (200,),
+        width=max(big // 40, 1),
+    )
+    # Gloss over the upper half of the face
+    gloss = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(gloss).ellipse(
+        (big * 0.2, big * 0.1, big * 0.8, big * 0.48), fill=90
+    )
+    gloss = gloss.filter(ImageFilter.GaussianBlur(big // 16))
+    gloss = Image.composite(gloss, Image.new("L", (big, big), 0), mask)
+    disc.paste((255, 255, 255, 255), (0, 0), gloss)
+    # The label, engraved: a light edge below dark text
+    text_face = font(text_size * 4, True)
+    centre = (big / 2, big / 2)
+    draw.text(
+        (centre[0], centre[1] + big * 0.03),
+        label,
+        font=text_face,
+        anchor="mm",
+        fill=shade(colour, 1.6) + (170,),
+    )
+    draw.text(
+        centre, label, font=text_face, anchor="mm", fill=shade(colour, 0.35) + (255,)
+    )
+
+    image.alpha_composite(disc, (pad, pad))
+    small = size + 2 * (size // 8)
+    return image.resize((small, small), Image.Resampling.LANCZOS)
+
+
+def put_medal(
+    card, x: float, y: float, colour: tuple, size: int, label: str, text_size: int
+):
+    """medal() with its disc's top left at x, y"""
+    image = medal(colour, size, label, text_size)
+    pad = size // 8
+    card.paste(image, (int(x) - pad, int(y) - pad), image)
+
+
+def _medal(card, draw, x: float, y: float, place: int, count: int) -> float:
+    """A gold/silver/bronze medal with its count; returns the right edge"""
+    put_medal(card, x, y + 2, PLACE_COLOURS[place], 22, str(place), 13)
     text = f"×{count}"
     face = font(20)
     draw.text((x + 26, y), text, font=face, fill=SOFT)
@@ -182,15 +259,15 @@ def _draw_ranking(
         )
 
         # Place badge
-        draw.ellipse((46, y + 18, 94, y + 66), fill=(colour or (60, 62, 76)) + (255,))
-        face = font(24 if place < 100 else 18, True)
-        text = str(place)
-        draw.text(
-            (70 - text_width(text, face) / 2, y + 26),
-            text,
-            font=face,
-            fill=(20, 20, 30, 255) if colour else WHITE,
-        )
+        if colour:
+            put_medal(card, 46, y + 18, colour, 48, str(place), 24)
+        else:
+            draw.ellipse((46, y + 18, 94, y + 66), fill=(60, 62, 76, 255))
+            face = font(24 if place < 100 else 18, True)
+            text = str(place)
+            draw.text(
+                (70 - text_width(text, face) / 2, y + 26), text, font=face, fill=WHITE
+            )
 
         # Profile picture, ringed in the place colour for the top three
         avatar = avatars.get(row["user"]) or avatar_fallback(row["name"], accent)
@@ -213,7 +290,7 @@ def _draw_ranking(
         mx = 192
         for medal_place in (1, 2, 3):
             if row["medals"].get(medal_place):
-                mx = _medal(draw, mx, y + 58, medal_place, row["medals"][medal_place])
+                mx = _medal(card, draw, mx, y + 58, medal_place, row["medals"][medal_place])
 
         # Count, right-aligned
         count = human_format_num(row["count"])
