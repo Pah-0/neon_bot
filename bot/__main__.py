@@ -35,6 +35,17 @@ from .workers.handlers.dev import bash, eval_message, get_logs
 from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import farm, gift_codes
+from .workers.handlers.guard import (
+    autolock,
+    captcha,
+    del_pfilter,
+    pfilter,
+    pfilters,
+    resetwarns,
+    warn,
+    warnlimit,
+    warns,
+)
 from .workers.handlers.hoyo import hoyo_search
 from .workers.handlers.lookup import fic, imdb, manga, novel
 from .workers.handlers.manage import (
@@ -365,6 +376,51 @@ async def _(client: NewAClient, message: Event):
 @bot.register("antilink")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, antilink, bot.client)
+
+
+@bot.register("autolock")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, autolock, bot.client)
+
+
+@bot.register("pfilter")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, pfilter, bot.client)
+
+
+@bot.register("pfilters")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, pfilters, bot.client)
+
+
+@bot.register("del_pfilter")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, del_pfilter, bot.client)
+
+
+@bot.register("warn")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, warn, bot.client)
+
+
+@bot.register("warns")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, warns, bot.client)
+
+
+@bot.register("resetwarns")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, resetwarns, bot.client)
+
+
+@bot.register("warnlimit")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, warnlimit, bot.client)
+
+
+@bot.register("captcha")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, captcha, bot.client)
 
 
 @bot.register("mute")
