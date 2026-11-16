@@ -35,6 +35,7 @@ from .workers.handlers.dev import bash, eval_message, get_logs
 from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import farm, gift_codes
+from .workers.handlers.guard import autolock, captcha
 from .workers.handlers.hoyo import hoyo_search
 from .workers.handlers.lookup import fic, imdb, manga, novel
 from .workers.handlers.manage import (
@@ -377,6 +378,11 @@ async def _(client: NewAClient, message: Event):
     await event_handler(message, antilink, bot.client)
 
 
+@bot.register("autolock")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, autolock, bot.client)
+
+
 @bot.register("pfilter")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, pfilter, bot.client)
@@ -410,6 +416,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("warnlimit")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, warnlimit, bot.client)
+
+
+@bot.register("captcha")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, captcha, bot.client)
 
 
 @bot.register("mute")

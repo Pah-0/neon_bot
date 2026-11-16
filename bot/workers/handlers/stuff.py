@@ -132,10 +132,12 @@ async def manage_cmds(event, args, client):
 {pre}gunban - *[Owner | Sudo | Admin] Lift a group ban (-c a community ban)*
 {pre}add - *[Owner | Sudo | Admin] Add people to the group by number, or -c to the community (sends the invite link if their privacy blocks it)*
 {pre}antilink - *[Owner | Sudo | Admin] Auto-delete links from members (on/off, -allow/-rm domains)*
+{pre}autolock - *[Owner | Sudo | Admin] Make the group admins-only every day between two times, e.g. 22:00 7:00 Africa/Lagos (time zone optional; off to stop)*
 {pre}pfilter - *[Owner | Sudo | Admin] Punishing filter: delete and warn on a word; reply to a message for the reason (-r reason, -a, -m)*
 {pre}pfilters / {pre}del_pfilter - *[Owner | Sudo | Admin] List / remove punishing filters*
 {pre}warn - *[Owner | Sudo | Admin] Warn members (reply: the message is the reason); removed at the warn limit*
 {pre}warns / {pre}resetwarns / {pre}warnlimit - *[Owner | Sudo | Admin] Show / clear warnings, set the limit (default 3, 0 = never remove)*
+{pre}captcha - *[Owner | Sudo | Admin] New members must solve a captcha or be removed (on/off, -t minutes)*
 {pre}mute - *[Owner | Sudo | Admin] Auto-delete messages from users, a role's members (-role) or everyone outside a role (-except)*
 {pre}enable_atd - *[Owner | Sudo | Admin] Enables Auto deletion of @all tags*
 {pre}disable_atd - *[Owner | Sudo | Admin] Disables Auto deletion of @all tags*

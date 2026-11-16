@@ -21,6 +21,8 @@ py3langid
 python-decouple
 python-ffmpeg
 pytz
+# Time zones for .autolock where the system has none
+tzdata
 sqlalchemy
 urlextract
 w3lib
