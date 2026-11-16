@@ -416,13 +416,16 @@ def get_sha256(string: str):
 
 def space_commands(text: str, prefix: str) -> str:
     """
-    A command listing with a blank line between consecutive commands, for
+    A command listing as a bulleted list (WhatsApp renders "- " lines as
+    bullets), with a blank line between consecutive commands for
     readability; a section header stays right above its first command
     """
     lines = []
     for line in text.split("\n"):
-        if line.startswith(prefix) and lines and lines[-1].startswith(prefix):
-            lines.append("")
+        if line.startswith(prefix):
+            if lines and lines[-1].startswith("- " + prefix):
+                lines.append("")
+            line = "- " + line
         lines.append(line)
     return "\n".join(lines)
 
