@@ -192,7 +192,7 @@ async def chosen(event, data: str):
         return
     if waiting["users"] and not sender_ids(event) & waiting["users"]:
         # Someone else's buttons: a no on their press
-        return await event.react("🚫")
+        return await event.react("🙅")
     if int(index) < len(waiting["keys"]):
         waiting["future"].set_result(waiting["keys"][int(index)])
 
