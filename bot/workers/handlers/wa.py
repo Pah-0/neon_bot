@@ -2145,6 +2145,7 @@ async def purge_messages(event, args, client):
         await event.react("🚮")
         for msg in messages:
             await msg.delete()
+        uncount_messages(messages)
         await event.react("")
     except Exception:
         await logger(Exception)
@@ -2216,26 +2217,49 @@ async def rec_msg_ranking(event, args, client):
             return
         chat_id = event.chat.id
         msg_rank = bot.group_dict.setdefault(chat_id, {}).setdefault("msg_ranking", {})
-        user = event.user.id
-        if event.is_revoke:
-            value = 0
-            msgs = await get_messages(chat_id, event.revoked_id)
-            if (
-                msgs
-                and msgs[0].from_user.id == event.from_user.id
-                and (ts := msgs[0].message.Info.Timestamp)
-            ):
-                date = datetime.datetime.fromtimestamp(ts / 1000)
-                if same_week(date, 0, 4):
-                    value = -1
-        else:
-            value = 1
-        msg_rank[user] = msg_rank.setdefault(user, 0) + value
         msg_rank["server"] = 0 if event.lid_address else 1
-        msg_rank["total"] = msg_rank.setdefault("total", 0) + value
+        if event.is_revoke:
+            # Whoever deleted it, the sender or an admin
+            return uncount_messages(await get_messages(chat_id, event.revoked_id))
+        user = event.user.id
+        msg_rank[user] = msg_rank.setdefault(user, 0) + 1
+        msg_rank["total"] = msg_rank.setdefault("total", 0) + 1
         bot.msg_leaderboard_counter += 1
     except Exception:
         await logger(Exception)
+
+
+# Messages already taken off the leaderboard, so a deletion the bot makes
+# isn't taken off again if its revoke comes back as a message
+uncounted = LimitedDict(1000)
+
+
+def uncount_messages(msgs: list[Event]):
+    """
+    Takes deleted messages (as stored) off their senders' message counts,
+    the ones counted this week
+    """
+    for msg in msgs:
+        key = (msg.chat.id, msg.id)
+        if key in uncounted or not (msg.text or msg.caption or msg.audio):
+            continue
+        uncounted[key] = True
+        if not (ts := msg.message.Info.Timestamp):
+            continue
+        if not same_week(datetime.datetime.fromtimestamp(ts / 1000), 0, 4):
+            continue
+        group = bot.group_dict.get(msg.chat.id, {})
+        if (msg_rank := group.get("msg_ranking")) is None:
+            continue
+        user = msg.user.id
+        if msg_rank.get(user, 0) <= 0:
+            continue
+        # Off the leaderboard at 0
+        msg_rank[user] -= 1
+        if msg_rank[user] <= 0:
+            msg_rank.pop(user)
+        msg_rank["total"] = max(msg_rank.get("total", 0) - 1, 0)
+        bot.msg_leaderboard_counter += 1
 
 
 async def msg_ranking(event, args, client):

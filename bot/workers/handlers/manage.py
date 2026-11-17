@@ -12,6 +12,7 @@ from bot.utils.bot_utils import list_to_str, set_name, split_text
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
 from bot.utils.log_utils import logger
+from bot.utils.msg_store import get_messages
 from bot.utils.msg_utils import (
     chat_is_allowed,
     event_handler,
@@ -27,6 +28,7 @@ from bot.utils.msg_utils import (
 from bot.utils.os_utils import PR_STATE_FILE, re_x, restart_already_handled, updater
 from bot.utils.rss_utils import schedule_rss, scheduler
 from bot.utils.runtime import shutdown_services
+from bot.workers.handlers.wa import uncount_messages
 
 
 async def restart_handler(event, args, client):
@@ -991,6 +993,7 @@ async def delete(event: Event, args, client):
         ) and reply.from_user.id not in {me.JID.User, me.LID.User}:
             return await event.reply("Reply to one of *my* messages to delete.")
         await reply.delete()
+        uncount_messages(await get_messages(event.chat.id, reply.id))
         await event.react("✅")
     except Exception:
         await logger(Exception)
