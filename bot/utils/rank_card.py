@@ -27,8 +27,7 @@ from .hoyo_cards import (
 
 CW = 1100
 HEADER_H = 200
-ROW_H, ROW_GAP = 84, 10
-NAME_W = 540
+ROW_H, ROW_GAP = 94, 10
 # Rows drawn on the card; a longer -f ranking says how many more there are
 MAX_ROWS = 30
 BACKGROUND = (24, 26, 36)
@@ -187,6 +186,12 @@ def _draw_ranking(
     draw.text((42, 140), totals, font=font(24), fill=FAINT)
 
     top = max((r["count"] for r in rows), default=1) or 1
+    # Names and bars run up to the widest count on the right
+    count_w = max(
+        [text_width(human_format_num(r["count"]), font(34, True)) for r in rows]
+        + [text_width("messages", font(18))]
+    )
+    name_w = CW - 54 - count_w - 32 - 192
     for i, row in enumerate(rows):
         y = HEADER_H + i * (ROW_H + ROW_GAP)
         place = row["place"]
@@ -200,30 +205,31 @@ def _draw_ranking(
 
         # Place badge
         if colour:
-            put_medal(card, draw, emojis, 44, y + 16, place, 52, 24)
+            put_medal(card, draw, emojis, 44, y + 21, place, 52, 24)
         else:
-            draw.ellipse((46, y + 18, 94, y + 66), fill=(60, 62, 76, 255))
+            draw.ellipse((46, y + 23, 94, y + 71), fill=(60, 62, 76, 255))
             face = font(24 if place < 100 else 18, True)
             text = str(place)
             draw.text(
-                (70 - text_width(text, face) / 2, y + 26), text, font=face, fill=WHITE
+                (70 - text_width(text, face) / 2, y + 31), text, font=face, fill=WHITE
             )
 
         # Profile picture, ringed in the place colour for the top three
         avatar = avatars.get(row["user"]) or avatar_fallback(row["name"], accent)
         if colour:
-            draw.ellipse((108, y + 8, 176, y + 76), fill=colour + (255,))
-        paste_fit(card, avatar, (112, y + 12, 172, y + 72), circle=True)
+            draw.ellipse((108, y + 13, 176, y + 81), fill=colour + (255,))
+        paste_fit(card, avatar, (112, y + 17, 172, y + 77), circle=True)
 
         # Name, share bar and medals
-        name = fit_rich(row["name"], 26, True, NAME_W, emojis)
-        draw_rich(card, draw, (192, y + 8), name, 26, True, WHITE, emojis)
-        # Count against first place's, with no track behind it: it isn't
-        # progress
+        name = fit_rich(row["name"], 26, True, name_w, emojis)
+        draw_rich(card, draw, (192, y + 9), name, 26, True, WHITE, emojis)
+        draw.rounded_rectangle(
+            (192, y + 49, 192 + name_w, y + 59), 5, fill=(255, 255, 255, 30)
+        )
         share = max(row["count"] / top, 0.02)
         draw.rounded_rectangle(
-            (192, y + 47, 192 + NAME_W * share, y + 53),
-            3,
+            (192, y + 49, 192 + name_w * share, y + 59),
+            5,
             fill=(colour or accent) + (255,),
         )
         mx = 192
@@ -234,7 +240,7 @@ def _draw_ranking(
                     draw,
                     emojis,
                     mx,
-                    y + 58,
+                    y + 65,
                     medal_place,
                     row["medals"][medal_place],
                 )
@@ -243,7 +249,7 @@ def _draw_ranking(
         count = human_format_num(row["count"])
         face = font(34, True)
         draw.text(
-            (CW - 54 - text_width(count, face), y + 12),
+            (CW - 54 - text_width(count, face), y + 17),
             count,
             font=face,
             fill=GOLD if colour else WHITE,
@@ -251,7 +257,7 @@ def _draw_ranking(
         unit = "message" if row["count"] == 1 else "messages"
         face = font(18)
         draw.text(
-            (CW - 54 - text_width(unit, face), y + 54), unit, font=face, fill=FAINT
+            (CW - 54 - text_width(unit, face), y + 59), unit, font=face, fill=FAINT
         )
 
     if more:
