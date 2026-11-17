@@ -150,7 +150,7 @@ async def tools(event, args, client):
             f"{pre}doc - *Convert a replied video/image/sticker to a document*{s}"
             f"{pre}fps - *Get the fps of a replied video/gif*{s}"
             f"{pre}mediainfo - *Get the mediainfo of a replied video/gif*{s}"
-            f"{pre}mp3 - *Convert a replied video to mp3, optionally trimmed*{s}"
+            f"{pre}mp3 - *Convert a replied video/audio to mp3, optionally trimmed or tagged*{s}"
             f"{pre}sanitize_video - *Re-encode a replied video that won't play*{s}"
             f"{pre}tikmate - *Download TikTok videos/images*{s}"
             f"{pre}autotranslate - *[Owner | Sudo | Admin in groups] Translate messages that aren't in the chat's language*{s}"
@@ -333,12 +333,37 @@ async def sanitize_video(event: Event, args: str, client):
         await event.react("❌")
 
 
+async def mp3_tags(audio: bytes, tags: dict[str, str]) -> bytes:
+    """audio with its ID3 tags (title, artist, album) set; the audio is copied"""
+    out = f"trim/{uuid.uuid4()}.mp3"
+    async with AFFmpeg(audio) as ffmpeg:
+        cmd = ["ffmpeg", "-y", "-i", ffmpeg.filepath, "-c", "copy"]
+        for key, value in tags.items():
+            cmd += ["-metadata", f"{key}={value}"]
+        # ID3v2.3: what most players and phones read
+        await ffmpeg.call(cmd + ["-id3v2_version", "3", out])
+    try:
+        return await read_binary(out)
+    finally:
+        s_remove(out)
+
+
+def mp3_name(tags: dict[str, str]) -> str:
+    """The file name "Artist - Title.mp3", without characters names can't hold"""
+    name = " - ".join(t for t in (tags.get("artist"), tags.get("title")) if t)
+    name = re.sub(r'[\\/:*?"<>|]+', " ", name or tags.get("album") or "audio")
+    return re.sub(r"\s+", " ", name).strip()[:120] + ".mp3"
+
+
 async def to_mp3(event, args, client):
     """
-    Convert a replied video (or video document) to mp3.
+    Convert a replied video or audio (or video/audio document) to mp3.
     Arguments:
         -s: start time to trim from (default: start)
         -t: end time to trim to (default: end)
+        -title, -artist, -album: set the mp3's tags; it's then also sent as a
+            file named "Artist - Title.mp3". Quote values with spaces:
+            -title "Song name"
     Invalid trim times are ignored and the full audio is sent.
     """
     user = event.from_user.id
@@ -349,22 +374,30 @@ async def to_mp3(event, args, client):
             return await event.react("⛔")
     try:
         if not (replied := event.reply_to_message):
-            return await event.reply("*Kindly reply to video.*")
+            return await event.reply("*Kindly reply to a video or audio.*")
         if replied.document:
             if not (
-                replied.document.mimetype.startswith("video")
+                replied.document.mimetype.startswith(("video", "audio"))
                 or is_video_file(replied.document.fileName)
             ):
-                return await event.reply("*Replied document is not a video.*")
-        elif not replied.video:
-            return await event.reply("*Replied message is not a video.*")
+                return await event.reply("*Replied document is not a video or audio.*")
+        elif not (replied.video or replied.audio):
+            return await event.reply("*Replied message is not a video or audio.*")
 
         arg, args = get_args(
             "-s",
             "-t",
+            "-title",
+            "-artist",
+            "-album",
             to_parse=(args or ""),
             get_unknown=True,
         )
+        tags = {
+            key: value.strip()
+            for key in ("title", "artist", "album")
+            if (value := getattr(arg, key)) and value.strip()
+        }
         trim_args = None
         async with event.react("📥"):
             file = await replied.download()
@@ -393,8 +426,15 @@ async def to_mp3(event, args, client):
                 audio = await read_binary(out_)
                 s_remove(out_)
 
+        if tags:
+            async with event.react("🏷️"):
+                audio = await mp3_tags(audio, tags)
+
         async with event.react("📤"):
             await event.reply_audio(audio)
+            # Audio messages show no name or tags; a file shows its name
+            if tags:
+                await event.reply_document(audio, mp3_name(tags))
     except Exception:
         await logger(Exception)
         await event.react("❌")
