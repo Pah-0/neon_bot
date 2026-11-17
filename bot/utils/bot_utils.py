@@ -113,6 +113,15 @@ def split_text(text: str, split="\n", pre=False, list_size=4000):
     return message_list
 
 
+def set_name(*users: str | None) -> dict | None:
+    """
+    The display name an owner or sudoer set for whichever of users' ids (LID
+    or phone number) has one: {"name": ..., "by_owner": bool}
+    """
+    names = bot.user_dict.get("names", {})
+    return next((names[u] for u in users if u and u in names), None)
+
+
 async def get_json(link):
     async with aiohttp.ClientSession() as requests:
         result = await requests.get(link)

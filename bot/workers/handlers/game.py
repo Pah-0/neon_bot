@@ -12,6 +12,7 @@ from bot.games.werewolf.roles import gamemodes
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args
+from bot.workers.handlers.manage import show_ids
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
 
 
@@ -33,13 +34,21 @@ async def werewolf_handler(event, args, client):
     In-game commands (alive players only):
         lynch <id or name> : vote to lynch a player, during the day
         id <id or name> : detective only, learn a player's role, once per day
+            (outside that, .id shows WhatsApp ids)
         shoot <id or name> : gunner/sharpshooter only, shoot a player during the day
     """
     cmd = event.text.split()[0].removeprefix(conf.CMD_PREFIX).casefold()
     if cmd in ("lynch", "id", "shoot"):
         game = bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
         if game and not isinstance(game, dict) and not game.waiting:
-            return await handle_game_command(game, event, cmd)
+            player = game.get_player_by_user_id(event.from_user.id)
+            # .id is the Detective's identify only for a living Detective
+            if cmd != "id" or (
+                player and player.is_alive and player.role == "detective"
+            ):
+                return await handle_game_command(game, event, cmd)
+        if cmd == "id":
+            return await show_ids(event, args, client)
         return
     if not args:
         return await were_info(event, args, client)

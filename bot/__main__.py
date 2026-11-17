@@ -52,6 +52,7 @@ from .workers.handlers.manage import (
     pause_handler,
     restart_handler,
     rss_handler,
+    setname,
     sudoers,
     unban,
     update_handler,
@@ -431,6 +432,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("sudo")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, sudoers, bot.client)
+
+
+@bot.register("setname")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, setname, bot.client)
 
 
 @bot.register("disable")
