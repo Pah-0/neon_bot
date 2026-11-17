@@ -915,11 +915,11 @@ async def show_ids(event, args, client):
             lid, number = user, getattr(event.from_user, "ph", None)
         info = await get_user_info(lid, "lid")
         name = info.PushName or info.FullName or "Unknown"
-        lines = [f"*{name}*", f"➤ *LID:* {lid}"]
+        lines = [f"*{name}*", f"- *LID:* {lid}"]
         # Groups hide numbers behind LIDs; only show them in private
         if number and not event.chat.is_group:
-            lines.append(f"➤ *Number:* +{number}")
-        lines.append(f"➤ *Chat:* {event.chat.id}@{event.chat.server}")
+            lines.append(f"- *Number:* +{number}")
+        lines.append(f"- *Chat:* {event.chat.id}@{event.chat.server}")
         await event.reply("\n".join(lines))
     except Exception:
         await logger(Exception)
