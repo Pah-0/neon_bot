@@ -481,19 +481,23 @@ class Event(BaseEvent):
     ) -> Event:
         quoted = self._get_quoted() if quote else None
         mentions_are_not_jids = False if mentions_are_jids else self.lid_address
-        send_image = self.client.send_image(
-            self.chat.jid,
-            photo,
-            caption,
-            quoted=quoted,
-            viewonce=viewonce,
-            spoiler=spoiler,
-            ghost_mentions=ghost_mentions,
-            mentions_are_lids=mentions_are_lids or mentions_are_not_jids,
-            add_msg_secret=add_msg_secret,
-        )
+
+        # A new coroutine for each try: one that was awaited can't be again
+        def send_image():
+            return self.client.send_image(
+                self.chat.jid,
+                photo,
+                caption,
+                quoted=quoted,
+                viewonce=viewonce,
+                spoiler=spoiler,
+                ghost_mentions=ghost_mentions,
+                mentions_are_lids=mentions_are_lids or mentions_are_not_jids,
+                add_msg_secret=add_msg_secret,
+            )
+
         try:
-            response = await send_image
+            response = await send_image()
         except Exception as e:
             if "upload failed with status code 429" not in str(e):
                 raise
@@ -501,7 +505,7 @@ class Event(BaseEvent):
                 "uploading image failed with error 429, sleeping for 10 seconds…"
             )
             await asyncio.sleep(10)
-            response = await send_image
+            response = await send_image()
         msg = self.gen_new_msg(response)
         return construct_event(msg)
 
