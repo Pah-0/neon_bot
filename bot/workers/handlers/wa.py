@@ -2148,12 +2148,19 @@ async def purge_messages(event, args, client):
         msg_id = event.reply_to_message.id if event.reply_to_message else event.id
 
         if arg.start:
-            purge_sessions[(chat_id, user)] = {"start_id": msg_id, "time": time.time()}
-            return await event.reply(
+            started = await event.reply(
                 f"Purge session started from message ID: `{msg_id}`.\n"
                 f"Reply to the ending message with `{conf.CMD_PREFIX}purge` to start purge.\n"
                 "Session expires in 300 seconds."
             )
+            # The bot's own messages aren't stored, so the purge can't find
+            # this one by its range
+            purge_sessions[(chat_id, user)] = {
+                "start_id": msg_id,
+                "time": time.time(),
+                "msg": started,
+            }
+            return
         if arg.all:
             messages = await get_messages_between(chat_id, msg_id, event.id)
             if not messages:
@@ -2166,12 +2173,14 @@ async def purge_messages(event, args, client):
                 )
             if time.time() - session["time"] > 300:
                 del purge_sessions[(chat_id, user)]
+                await session["msg"].delete()
                 return await event.reply(
                     f"Purge session timed out. Start a new one with `{conf.CMD_PREFIX}purge --start`."
                 )
             end_msg_id = event.reply_to_message.id
             start_id = session["start_id"]
             del purge_sessions[(chat_id, user)]
+            await session["msg"].delete()
             messages = await get_messages_between(chat_id, start_id, end_msg_id)
             if not messages:
                 return await event.reply("No messages found to purge.")
