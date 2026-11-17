@@ -5,6 +5,7 @@ from bot.utils.buttons import choose, sender_ids
 from bot.utils.log_utils import logger
 from bot.utils.lookup_utils import (
     ao3_info,
+    get_photo,
     manga_info,
     novel_info,
     search_ao3,
@@ -73,8 +74,10 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
                 return await event.reply("Time out!")
         async with event.react("⏳"):
             image, caption = await info(key)
-            if image:
-                await event.reply_photo(image, caption)
+            # A missing or unsendable picture leaves just the caption
+            photo = await get_photo(image) if image else None
+            if photo:
+                await event.reply_photo(photo, caption)
             else:
                 await event.reply(caption)
     except Exception as e:

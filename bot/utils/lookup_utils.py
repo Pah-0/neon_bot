@@ -7,11 +7,13 @@ API key. AO3 often refuses bots, so .fic may only work some of the time.
 """
 
 import html
+import io
 import re
 from urllib.parse import quote
 
 import flag
 from bs4 import BeautifulSoup
+from PIL import Image
 
 from bot import bot
 
@@ -97,6 +99,27 @@ async def get_json(url: str, **kwargs):
     async with method(url, headers=HEADERS, **kwargs) as resp:
         resp.raise_for_status()
         return await resp.json(content_type=None)
+
+
+async def get_photo(url: str) -> bytes | None:
+    """
+    url's picture as JPEG or PNG, the formats WhatsApp shows (it drops others,
+    such as WebP, without an error); None if it's missing or not a picture
+    """
+    try:
+        async with bot.requests.get(url, headers=HEADERS) as resp:
+            # Missing Cinemeta posters redirect to a 404 text page
+            if resp.status != 200:
+                return None
+            data = await resp.read()
+        image = Image.open(io.BytesIO(data))
+        if image.format in ("JPEG", "PNG"):
+            return data
+        output = io.BytesIO()
+        image.convert("RGB").save(output, format="jpeg", quality=92)
+        return output.getvalue()
+    except Exception:
+        return None
 
 
 async def get_text(url: str, **kwargs) -> str:
