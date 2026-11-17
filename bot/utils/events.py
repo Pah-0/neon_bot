@@ -29,7 +29,7 @@ from bot.config import bot, conf
 from bot.others.exceptions import StopAutoHandlers, StopHandlers
 from bot.types.event import BaseEvent, Chat, User
 
-from .bot_utils import write_binary
+from .bot_utils import set_name, write_binary
 from .log_utils import logger
 
 _log_ = logging.getLogger(__name__)
@@ -149,6 +149,9 @@ class Event(BaseEvent):
             self.from_user.ph = self.from_user.id
             self.from_user.id = self.from_user.hid
             self.lid_address = True
+        # A name an owner or sudoer set takes the place of the push name
+        if named := set_name(self.from_user.id, getattr(self.from_user, "ph", None)):
+            self.from_user.name = named["name"]
         self.caption = (
             (extract_text(self._message) or None)
             if not (self.text or self.is_edit)

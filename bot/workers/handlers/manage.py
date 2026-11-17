@@ -2,12 +2,13 @@ import asyncio
 import datetime
 import itertools
 import json
+import re
 from inspect import getdoc
 
 from feedparser import parse as feedparse
 
 from bot import bot, jid, rss_dict_lock
-from bot.utils.bot_utils import list_to_str, split_text
+from bot.utils.bot_utils import list_to_str, set_name, split_text
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
 from bot.utils.log_utils import logger
@@ -774,6 +775,152 @@ async def sudoers(event, args, client):
             f"@{su_id} *has been successfully {'added to' if arg.a else 'removed from'} sudoers.*",
             mentions_are_lids=True,
         )
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+
+
+# How long a set display name can be
+NAME_MAX = 40
+
+
+async def ids_from_lid(lid: str) -> tuple[str, str | None]:
+    """(LID, phone number if WhatsApp has it)"""
+    try:
+        number = (await bot.client.get_pn_from_lid(jid.build_jid(lid, "lid"))).User
+    except Exception:
+        number = None
+    return lid, number or None
+
+
+async def ids_from_number(number: str) -> tuple[str | None, str]:
+    """(LID if WhatsApp has it, phone number)"""
+    try:
+        pn = jid.build_jid(number, "s.whatsapp.net")
+        lid = (await bot.client.get_lid_from_pn(pn)).User
+    except Exception:
+        lid = None
+    return lid or None, number
+
+
+async def target_user(event, args: str) -> tuple[str | None, str | None, str]:
+    """
+    (LID, phone number, the rest of args) for the user named first in args
+    (a mention, LID or +number), else the replied user, else (None, None, args)
+    """
+    first, _, rest = args.partition(" ")
+    if first and re.fullmatch(r"@?\+?[0-9]{5,16}", first):
+        token = first.lstrip("@")
+        # As .sudo reads ids: +number, or a LID where chats address by LID
+        if token.startswith("+") or not event.lid_address:
+            lid, number = await ids_from_number(token.lstrip("+"))
+        else:
+            lid, number = await ids_from_lid(token)
+        return lid, number, rest.strip()
+    if replied := event.reply_to_message:
+        user = replied.from_user
+        if number := getattr(user, "ph", None):
+            lid, number = await ids_from_number(number)
+            return lid or user.id or None, number, args
+        lid, number = await ids_from_lid(user.id)
+        return lid, number, args
+    return None, None, args
+
+
+async def setname(event, args, client):
+    """
+    [Owner | Sudo] Set the name the bot calls someone by, in place of their
+    WhatsApp name, everywhere it names people (rankings, quotes, AFK...).
+    Usage:
+        setname <name> - replying to their message
+        setname @user <name> (or their +number) - without a reply
+        setname -rm - replying, or with @user/+number: back to their WhatsApp name
+        setname - replying, or with @user/+number: show the name set for them
+    A name set by an owner can only be changed or removed by an owner, and
+    sudoers can't rename owners.
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        return await event.react("🚫")
+    try:
+        arg, args = get_args(
+            ["-rm", "store_true"], to_parse=args or "", get_unknown=True
+        )
+        lid, number, name = await target_user(event, args.strip())
+        if not lid:
+            return await event.reply(getdoc(setname))
+        names = bot.user_dict.setdefault("names", {})
+        current = set_name(lid, number)
+        if not (name or arg.rm):
+            if not current:
+                return await event.reply(
+                    f"*No name is set for* @{lid}.", mentions_are_lids=True
+                )
+            setter = "an owner" if current.get("by_owner") else "a sudoer"
+            return await event.reply(
+                f"@{lid} *is called* {current['name']} *(set by {setter}).*",
+                mentions_are_lids=True,
+            )
+        owner = user_is_owner(user)
+        if not owner:
+            if current and current.get("by_owner"):
+                return await event.reply(
+                    "*That name was set by an owner; only an owner can change it.*"
+                )
+            if user_is_owner(lid) or (number and user_is_owner(number)):
+                return await event.reply("*Only an owner can rename an owner.*")
+        if arg.rm:
+            if not current:
+                return await event.reply(
+                    f"*No name is set for* @{lid}.", mentions_are_lids=True
+                )
+            for key in (lid, number):
+                names.pop(key, None)
+            await save2db2(bot.user_dict, "users")
+            return await event.reply(
+                f"@{lid} *is back to their WhatsApp name.*", mentions_are_lids=True
+            )
+        name = " ".join(name.split())
+        if len(name) > NAME_MAX:
+            return await event.reply(f"*Names can be at most {NAME_MAX} characters.*")
+        entry = {"name": name, "by_owner": owner}
+        # Under both ids, since chats know people by either
+        for key in (lid, number):
+            if key:
+                names[key] = entry
+        await save2db2(bot.user_dict, "users")
+        await event.reply(
+            f"@{lid} *will now be called* {name}.", mentions_are_lids=True
+        )
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+
+
+async def show_ids(event, args, client):
+    """
+    Show your WhatsApp ids, or the replied or mentioned user's, and the chat's.
+    Phone numbers are only shown in a private chat with the bot.
+    Usage: id [@user]
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        lid, number, _ = await target_user(event, (args or "").strip())
+        if not lid:
+            lid, number = user, getattr(event.from_user, "ph", None)
+        info = await get_user_info(lid, "lid")
+        name = info.PushName or info.FullName or "Unknown"
+        lines = [f"*{name}*", f"➤ *LID:* {lid}"]
+        # Groups hide numbers behind LIDs; only show them in private
+        if number and not event.chat.is_group:
+            lines.append(f"➤ *Number:* +{number}")
+        lines.append(f"➤ *Chat:* {event.chat.id}@{event.chat.server}")
+        await event.reply("\n".join(lines))
     except Exception:
         await logger(Exception)
         await event.react("❌")

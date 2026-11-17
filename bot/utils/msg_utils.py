@@ -12,7 +12,7 @@ from bot import jid
 from bot.config import bot, conf
 from bot.others.exceptions import ArgumentParserError
 
-from .bot_utils import post_to_tgph
+from .bot_utils import post_to_tgph, set_name
 
 # isort: off
 from .events import (
@@ -178,6 +178,9 @@ async def get_user_info(user_id: str, server: str = "s.whatsapp.net"):
             info = await bot.client.contact.get_contact(jid_)
         except Exception:
             pass
+    # A name an owner or sudoer set takes the place of the WhatsApp one
+    if named := set_name(user_id, jid_.User):
+        info.PushName = info.FullName = named["name"]
     return info
 
 

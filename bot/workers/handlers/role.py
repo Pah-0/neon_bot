@@ -12,6 +12,7 @@ from bot.utils.msg_utils import (
     find_role_mentions,
     get_args,
     get_mentioned,
+    get_user_info,
     tag_all_users_in_role,
     user_is_admin,
     user_is_allowed,
@@ -161,7 +162,7 @@ def name_error(name: str) -> str | None:
 
 async def display_name(client, user: str) -> str:
     # Contact names can be empty; the id is the last resort
-    info = await client.contact.get_contact(jid.build_jid(user, "lid"))
+    info = await get_user_info(user, "lid")
     return info.PushName or info.FullName or user
 
 
