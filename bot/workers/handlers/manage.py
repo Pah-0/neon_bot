@@ -899,12 +899,15 @@ async def setname(event, args, client):
 
 async def group_standing(event, client, ids: set) -> list[str]:
     """
-    .id lines for a group: the user's roles here, and the other groups of
-    the group's community the bot sees them in
+    .id lines for a group: its community's id, the user's roles here, and
+    the other groups of the community the bot sees them in
     """
     from .members import community_of, find_member
 
     lines = []
+    parent = community_of(await client.get_group_info(event.chat.jid))
+    if parent:
+        lines.append(f"- *Community:* {parent.User}@{parent.Server}")
     roles = bot.group_dict.get(event.chat.id, {}).get("roles", {})
     # Roles from before LIDs can still hold phone numbers
     theirs = sorted(
@@ -912,7 +915,7 @@ async def group_standing(event, client, ids: set) -> list[str]:
     )
     if theirs:
         lines.append(f"- *Roles:* {', '.join(theirs)}")
-    if not (parent := community_of(await client.get_group_info(event.chat.jid))):
+    if not parent:
         return lines
     groups = []
     for group in await client.get_sub_groups(parent):
