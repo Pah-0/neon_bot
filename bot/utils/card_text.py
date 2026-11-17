@@ -1,7 +1,8 @@
 """
 Text with emoji for the image cards (.msg_ranking, .quote): emoji are drawn
-as Twemoji images inline, since Noto Sans has none, and text is measured
-and wrapped so nothing is clipped.
+inline as Apple's emoji images, the closest to WhatsApp's own (Twemoji for
+any Apple's set lacks), since Noto Sans has none, and text is measured and
+wrapped so nothing is clipped.
 """
 
 import asyncio
@@ -15,6 +16,9 @@ from bot.config import bot
 
 from .hoyo_cards import fetch_image, font, font_runs, text_width
 
+APPLE_EMOJI = (
+    "https://cdn.jsdelivr.net/npm/emoji-datasource-apple@16.0.0/img/apple/64/{}.png"
+)
 TWEMOJI = "https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/{}.png"
 # An emoji relative to its font's size
 EMOJI_SCALE = 1.2
@@ -55,10 +59,34 @@ def twemoji_url(emoji: str) -> str:
     return TWEMOJI.format("-".join(codes))
 
 
+def apple_names(emoji: str) -> list[str]:
+    """
+    Apple image names to try for emoji: as written, then without and with the
+    emoji selector (Apple's names have it wherever the emoji takes it, e.g.
+    2764-fe0f, which isn't always typed)
+    """
+    codes = [f"{ord(c):x}" for c in emoji]
+    bare = [c for c in codes if c != "fe0f"]
+    names = [
+        "-".join(codes),
+        "-".join(bare),
+        "-".join(bare[:1] + ["fe0f"] + bare[1:]),
+    ]
+    return list(dict.fromkeys(names))
+
+
+async def emoji_image(emoji: str) -> Image.Image | None:
+    for name in apple_names(emoji):
+        if (image := await fetch_image(APPLE_EMOJI.format(name))) is not None:
+            return image
+    # Emoji newer than Apple's set
+    return await fetch_image(twemoji_url(emoji))
+
+
 async def load_emojis(*texts: str) -> dict[str, Image.Image]:
-    """The Twemoji images for every emoji in texts (cached on disk)"""
+    """The emoji images for every emoji in texts (cached on disk)"""
     emojis = sorted({e for t in texts if t for kind, e in runs(t) if kind == "emoji"})
-    images = await asyncio.gather(*(fetch_image(twemoji_url(e)) for e in emojis))
+    images = await asyncio.gather(*(emoji_image(e) for e in emojis))
     return {e: i for e, i in zip(emojis, images) if i is not None}
 
 
