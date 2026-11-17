@@ -2204,6 +2204,8 @@ async def msg_ranking(event, args, client):
     Arguments:
         -f / --full: everyone, not just the top 10 (the card shows up to 30)
         -text: the leaderboard as text instead
+        -bar: [Owner | Sudo | Admin] turn the grey track behind the card's
+            bars on or off for this group (on by default)
     """
     if not event.chat.is_group:
         return
@@ -2219,8 +2221,22 @@ async def msg_ranking(event, args, client):
             ["-f", "store_true"],
             ["--full", "store_true"],
             ["-text", "store_true"],
+            ["-bar", "store_true"],
             to_parse=args or "",
         )
+        if flags.bar:
+            if not user_is_privileged(user):
+                group_info = await client.get_group_info(event.chat.jid)
+                if not user_is_admin(user, group_info.Participants):
+                    return await event.react("🚫")
+            # Kept with the group, not in msg_ranking: that's reset each period
+            group = bot.group_dict.setdefault(chat_id, {})
+            group["rank_track"] = not group.get("rank_track", True)
+            await save2db2(bot.group_dict, "groups")
+            state = "on" if group["rank_track"] else "off"
+            return await event.reply(
+                f"*The grey bar behind the leaderboard bars is now {state}.*"
+            )
         full = flags.f or flags.full
         if flags.text:
             msg = await get_ranking_msg(chat_id, full=full)
@@ -2286,6 +2302,7 @@ async def get_ranking_data(chat_id, full=False):
         "total": msg_rank_dict.get("total") or 0,
         "members": len(counts),
         "server": server,
+        "track": group.get("rank_track", True),
         "rows": rows,
     }
 

@@ -223,9 +223,10 @@ def _draw_ranking(
         # Name, share bar and medals
         name = fit_rich(row["name"], 26, True, name_w, emojis)
         draw_rich(card, draw, (192, y + 9), name, 26, True, WHITE, emojis)
-        draw.rounded_rectangle(
-            (192, y + 49, 192 + name_w, y + 59), 5, fill=(255, 255, 255, 30)
-        )
+        if data.get("track", True):
+            draw.rounded_rectangle(
+                (192, y + 49, 192 + name_w, y + 59), 5, fill=(255, 255, 255, 30)
+            )
         share = max(row["count"] / top, 0.02)
         draw.rounded_rectangle(
             (192, y + 49, 192 + name_w * share, y + 59),
