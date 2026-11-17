@@ -1148,11 +1148,32 @@ def ran_stick():
     return y
 
 
+# Photos of the drink from Wikimedia Commons, for .smirnoff
+SMIRNOFF = (
+    "https://upload.wikimedia.org/wikipedia/commons/9/91/Naggin_of_Smirnoff_vodka.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/9/92/Smirnoff_70cl_bottle.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Smirnoff_Double_Black.jpg/500px-Smirnoff_Double_Black.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Smirnoff_Ice_Berry_Blast%2C_Canada_%28English_side%29%2C_2026-02-19.jpg/500px-Smirnoff_Ice_Berry_Blast%2C_Canada_%28English_side%29%2C_2026-02-19.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Smirnoff_Ice_Original_bought_in_Japan.jpg/500px-Smirnoff_Ice_Original_bought_in_Japan.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Smirnoff_Ice_Original.jpg/500px-Smirnoff_Ice_Original.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Smirnoff_Ice.jpg/500px-Smirnoff_Ice.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/Smirnoff_Red_Label_8213.jpg/500px-Smirnoff_Red_Label_8213.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Smirnoff_Vodka_375ml_bottle_%28standing_up%29.jpg/500px-Smirnoff_Vodka_375ml_bottle_%28standing_up%29.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Smirnoff_Vodka_bottle_front.jpg/500px-Smirnoff_Vodka_bottle_front.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Smirnoff_beer.jpg/500px-Smirnoff_beer.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Smirnoff_vodka_mini_bottle.jpg/500px-Smirnoff_vodka_mini_bottle.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Smirnoff_vodka.jpg/500px-Smirnoff_vodka.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Smirnoff-ice-7126.JPG/500px-Smirnoff-ice-7126.JPG",
+)
+
+
 # Each sticker is downloaded once; some hosts (Fandom's image CDN) refuse
 # repeated or automated fetches, and a refusal must not reach the sticker
 # converter, which treats anything that isn't an image as a video
 STICKER_CACHE = os.path.join(".cache", "stickers")
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
+# Wikimedia refuses aiohttp's own user agent
+_HEADERS = {"User-Agent": "neon_bot (+https://github.com/Pah-0/neon_bot)"}
 # The stickers mirrored by .github/workflows/stickers.yml, under the names
 # this cache uses; refreshed weekly
 STICKER_PACK = (
@@ -1199,7 +1220,7 @@ async def sticker_bytes(url: str) -> bytes | None:
         with open(path, "rb") as f:
             return f.read()
     try:
-        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT, headers=_HEADERS) as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
                     return None
@@ -1214,11 +1235,11 @@ async def sticker_bytes(url: str) -> bytes | None:
     return data
 
 
-async def random_sticker(tries: int = 5) -> bytes | None:
-    """A random sticker's image, skipping ones that can't be fetched"""
+async def random_sticker(tries: int = 5, pick=ran_stick) -> bytes | None:
+    """A random sticker's image from pick(), skipping ones that can't be fetched"""
     await ensure_pack()
     for _ in range(tries):
-        if data := await sticker_bytes(ran_stick()):
+        if data := await sticker_bytes(pick()):
             return data
         await asyncio.sleep(0)
     return None

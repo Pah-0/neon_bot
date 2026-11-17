@@ -44,10 +44,10 @@ def fetch(url: str, tries: int = 3) -> tuple[str, bytes | None, str]:
 
 
 def main(out: str) -> int:
-    # Only the URLs in ran_stick()'s list, not the pack's own address
+    # The sticker lists' URLs, not the pack's own address
     source = STICKERS.read_text()
-    listing = source[source.index("stickers = (") : source.index("\n    )\n")]
-    urls = list(dict.fromkeys(re.findall(r'"(https?://[^"]+)"', listing)))
+    urls = re.findall(r'"(https?://[^"]+)"', source)
+    urls = [url for url in dict.fromkeys(urls) if "/releases/download/" not in url]
     with ThreadPoolExecutor(max_workers=12) as pool:
         results = list(pool.map(fetch, urls))
     kept = [(url, data) for url, data, _ in results if data]

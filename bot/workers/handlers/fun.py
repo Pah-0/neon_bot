@@ -2,6 +2,7 @@ import random
 from urllib.parse import quote_plus
 
 from bot.config import bot, conf
+from bot.fun.stickers import SMIRNOFF, random_sticker
 from bot.utils.bot_utils import get_json, png_to_jpg, space_commands
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
@@ -32,7 +33,8 @@ async def fun(event, args, client):
             f"{pre}dog - *Get a random dog pic/video*{s}"
             f"{pre}gif [search] - *Get a random GIF matching search (default: anime)*{s}"
             f"{pre}gsticker [search] - *Get a random sticker matching search (default: anime)*{s}"
-            f"{pre}meme [subreddit] - *Get a random reddit meme*"
+            f"{pre}meme [subreddit] - *Get a random reddit meme*{s}"
+            f"{pre}smirnoff - *Get a random Smirnoff sticker*"
         )
         await event.reply(space_commands(msg, pre))
     except Exception:
@@ -381,10 +383,40 @@ async def sticker_helper(event, args, client):
     )
 
 
+async def smirnoff(event, args, client):
+    """
+    Sends a random sticker of Smirnoff.
+    If used as a reply, the sticker is sent in reply to the replied message.
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        sticker = await random_sticker(pick=lambda: random.choice(SMIRNOFF))
+        if not sticker:
+            return await event.reply("*Request Failed!*")
+        me = await bot.client.get_me()
+        await clean_reply(
+            event,
+            event.reply_to_message,
+            "reply_sticker",
+            sticker,
+            name="Smirnoff",
+            packname=me.PushName,
+        )
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+
+
 bot.add_handler(fun, "fun")
 bot.add_handler(cat, "cat")
 bot.add_handler(coub, "coub")
 bot.add_handler(dog, "dog")
 bot.add_handler(gif, "gif")
 bot.add_handler(sticker, "gsticker")
+bot.add_handler(smirnoff, "smirnoff")
 # bot.add_handler(meme, "meme")
