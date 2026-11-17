@@ -380,9 +380,7 @@ async def to_mp3(event, args, client):
                 replied.document.mimetype.startswith(("video", "audio"))
                 or is_video_file(replied.document.fileName)
             ):
-                return await event.reply(
-                    "*Replied document is not a video or audio.*"
-                )
+                return await event.reply("*Replied document is not a video or audio.*")
         elif not (replied.video or replied.audio):
             return await event.reply("*Replied message is not a video or audio.*")
 
