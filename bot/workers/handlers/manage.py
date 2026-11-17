@@ -843,7 +843,9 @@ async def setname(event, args, client):
     if not user_is_privileged(user):
         return await event.react("🚫")
     try:
-        arg, args = get_args(["-rm", "store_true"], to_parse=args or "", get_unknown=True)
+        arg, args = get_args(
+            ["-rm", "store_true"], to_parse=args or "", get_unknown=True
+        )
         lid, number, name = await target_user(event, args.strip())
         if not lid:
             return await event.reply(getdoc(setname))
