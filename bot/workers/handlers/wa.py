@@ -106,6 +106,7 @@ from bot.utils.os_utils import enshell, s_remove, size_of
 from bot.utils.parse_td_utils import parse_reminder_time_hybrid
 from bot.utils.rank_card import ranking_card
 from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_response
+from bot.utils.wa_markdown import md_to_whatsapp
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
 from bot.workers.handlers.guard import start_captchas
@@ -161,6 +162,7 @@ async def tools(event, args, client):
             f"{' *(models: ' + ', '.join(UPSCALE_MODELS) + ')*' if conf.MODAL_UPSCALE_API else ''}{s}"
             f"{pre}batch_upscale - {'*Upscale replied album images* *(models: ' + ', '.join(UPSCALE_MODELS) + ')*' if conf.MODAL_UPSCALE_API else '_Currently not available!_'}{s}"
             f"{s}"
+            f"{pre}md - *Clean up Markdown pasted from Discord and the like for WhatsApp*{s}"
             f"{pre}msg_ranking - *Get the group's message leaderboard card (-f everyone, -text as text)*{s}"
             f"{pre}pin - *[Owner | Sudo | Admin] Pin a replied message*{s}"
             f"{pre}unpin - *[Owner | Sudo | Admin] Unpin a replied message*{s}"
@@ -786,6 +788,37 @@ async def sanitize_url(event, args, client):
     finally:
         if status_msg:
             await status_msg.delete()
+
+
+async def markdown_to_wa(event, args, client):
+    """
+    Clean up Markdown pasted from Discord, GitHub and the like for WhatsApp:
+    # headers and **bold** become *bold*, *italic* _italic_, ~~strike~~ ~strike~,
+    [text](link) "text: link"; Discord mentions, custom emojis and spoilers
+    are dropped and its timestamps written out.
+
+    Usage:
+        Reply to a message, or put the text after the command.
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        # args is split at the first space, which loses text after a newline
+        parts = event.text.split(maxsplit=1)
+        text = parts[1] if len(parts) > 1 else ""
+        replied = event.reply_to_message
+        if not text and replied:
+            text = replied.caption or replied.text or ""
+        if not text.strip():
+            return await event.reply(f"{markdown_to_wa.__doc__}")
+        await event.reply(md_to_whatsapp(text))
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
 
 
 async def screenshot(event, args, client):
@@ -3575,6 +3608,7 @@ bot.add_handler(purge_messages, "purge")
 bot.add_handler(delete_rules, "delrules")
 bot.add_handler(list_filters, "filters")
 bot.add_handler(sanitize_url, "sanitize")
+bot.add_handler(markdown_to_wa, "md")
 bot.add_handler(screenshot, "screenshot")
 bot.add_handler(screenshot_comments_, "screenshot_comments")
 bot.add_handler(upscale_image, "upscale")
