@@ -218,7 +218,8 @@ def _draw_ranking(
         # Name, share bar and medals
         name = fit_rich(row["name"], 26, True, NAME_W, emojis)
         draw_rich(card, draw, (192, y + 8), name, 26, True, WHITE, emojis)
-        # Count against first place's, with no track behind it: it isn't progress
+        # Count against first place's, with no track behind it: it isn't
+        # progress
         share = max(row["count"] / top, 0.02)
         draw.rounded_rectangle(
             (192, y + 47, 192 + NAME_W * share, y + 53),
