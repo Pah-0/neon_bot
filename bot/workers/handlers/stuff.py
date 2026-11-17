@@ -31,7 +31,7 @@ async def getcmds(event, args, client):
         msg = f"""{pre}start - *Hi!*
 {pre}ping - *Check if bot is alive*
 {pre}afk - *Enable AFK mode*
-{pre}id - *Show your ids, or a replied/mentioned user's, and the chat's*
+{pre}id - *Show your ids, or a replied/mentioned user's, with their roles and other community groups*
 {pre}games - *Get game commands: Werewolf, Genshin, Star Rail and ZZZ*
 {pre}lookup - *Get commands to look up anime, manga, novels, fanfics, films and TV*
 {pre}fun - *Get fun commands*

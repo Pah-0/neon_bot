@@ -897,10 +897,46 @@ async def setname(event, args, client):
         await event.react("❌")
 
 
+async def group_standing(event, client, ids: set) -> list[str]:
+    """
+    .id lines for a group: the user's roles here, and the other groups of
+    the group's community the bot sees them in
+    """
+    from .members import community_of, find_member
+
+    lines = []
+    roles = bot.group_dict.get(event.chat.id, {}).get("roles", {})
+    # Roles from before LIDs can still hold phone numbers
+    theirs = sorted(
+        name for name, role in roles.items() if ids & set(role.get("members", []))
+    )
+    if theirs:
+        lines.append(f"- *Roles:* {', '.join(theirs)}")
+    if not (parent := community_of(await client.get_group_info(event.chat.jid))):
+        return lines
+    groups = []
+    for group in await client.get_sub_groups(parent):
+        if group.JID.User == event.chat.id:
+            continue
+        try:
+            info = await client.get_group_info(group.JID)
+        except Exception:
+            # One the bot isn't in
+            continue
+        if any(find_member(u, info.Participants) for u in ids):
+            groups.append(info.GroupName.Name)
+    if groups:
+        lines.append("- *Also in:*")
+        lines += [f"   - {name}" for name in sorted(groups)]
+    return lines
+
+
 async def show_ids(event, args, client):
     """
-    Show your WhatsApp ids, or the replied or mentioned user's, and the chat's.
-    Phone numbers are only shown in a private chat with the bot.
+    Show your WhatsApp ids, or the replied or mentioned user's, and the chat's;
+    in a group, also their roles there and the other groups of its community
+    the bot sees them in. Phone numbers are only shown in a private chat with
+    the bot.
     Usage: id [@user]
     """
     user = event.from_user.id
@@ -920,6 +956,8 @@ async def show_ids(event, args, client):
         if number and not event.chat.is_group:
             lines.append(f"- *Number:* +{number}")
         lines.append(f"- *Chat:* {event.chat.id}@{event.chat.server}")
+        if event.chat.is_group:
+            lines += await group_standing(event, client, {lid} | {number} - {None})
         await event.reply("\n".join(lines))
     except Exception:
         await logger(Exception)
