@@ -927,10 +927,12 @@ async def group_standing(event, client, ids: set) -> list[str]:
             # One the bot isn't in
             continue
         if any(find_member(u, info.Participants) for u in ids):
-            groups.append(info.GroupName.Name)
+            groups.append(info)
     if groups:
         lines.append("- *Also in:*")
-        lines += [f"   - {name}" for name in sorted(groups)]
+        # @id@g.us is sent as a group mention: its name, and a tap opens it
+        groups.sort(key=lambda info: info.GroupName.Name.casefold())
+        lines += [f"   - @{info.JID.User}@g.us" for info in groups]
     return lines
 
 
