@@ -71,8 +71,8 @@ def md_to_whatsapp(text: str) -> str:
     text = text.replace("\r\n", "\n")
     # Code is left as it is, but as WhatsApp's monospace
     text = CODE_BLOCK.sub(lambda m: hold(f"```{
-                m.group(1).strip(
-                    chr(10))}```"), text)
+        m.group(1).strip(
+            chr(10))}```"), text)
     text = INLINE_CODE.sub(lambda m: hold(f"`{m.group(1)}`"), text)
     text = ESCAPED.sub(lambda m: hold(m.group(1)), text)
 
@@ -90,7 +90,7 @@ def md_to_whatsapp(text: str) -> str:
     text = _long_quote(text)
 
     text = BOLD_ITALIC.sub(lambda m: f"{BOLD}{ITALIC}{
-            m.group(1)}{ITALIC}{BOLD}", text)
+        m.group(1)}{ITALIC}{BOLD}", text)
     text = STRONG.sub(lambda m: f"{BOLD}{m.group(1)}{BOLD}", text)
     # WhatsApp has no underline
     text = UNDERLINE.sub(r"\1", text)
