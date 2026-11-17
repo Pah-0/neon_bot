@@ -142,7 +142,7 @@ async def search_button(event, data: str):
     action, _, value = rest.partition(":")
     saved = _search_buttons.get(token)
     if saved and not sender_ids(event) & saved["by"]:
-        return
+        return await event.react("🚫")
     if not saved or time.time() - saved["at"] > SEARCH_BUTTONS_TTL:
         return await event.reply(
             f"*That search has expired; send {conf.CMD_PREFIX}search again.*"

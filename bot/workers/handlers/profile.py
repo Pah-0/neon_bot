@@ -188,7 +188,7 @@ async def character_button(event, data: str):
     token, _, index = data.partition(":")
     profile = _profile_buttons.get(token)
     if profile and not sender_ids(event) & profile["by"]:
-        return
+        return await event.react("🚫")
     if not profile or time.time() - profile["at"] > PROFILE_BUTTONS_TTL:
         name = GAMES.get(profile["game"] if profile else "", {}).get("name", "")
         return await event.reply(
