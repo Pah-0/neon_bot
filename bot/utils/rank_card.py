@@ -127,11 +127,12 @@ def put_medal(
 
 def _medal(card, draw, emojis: dict, x: float, y: float, place: int, count: int):
     """A gold/silver/bronze medal with its count; returns the right edge"""
-    put_medal(card, draw, emojis, x, y, place, 24, 13)
+    # Kept clear of the share bar above
+    put_medal(card, draw, emojis, x, y + 1, place, 22, 12)
     text = f"×{count}"
     face = font(20)
-    draw.text((x + 28, y), text, font=face, fill=SOFT)
-    return x + 28 + text_width(text, face) + 14
+    draw.text((x + 26, y), text, font=face, fill=SOFT)
+    return x + 26 + text_width(text, face) + 14
 
 
 def _draw_ranking(
@@ -217,13 +218,11 @@ def _draw_ranking(
         # Name, share bar and medals
         name = fit_rich(row["name"], 26, True, NAME_W, emojis)
         draw_rich(card, draw, (192, y + 8), name, 26, True, WHITE, emojis)
-        draw.rounded_rectangle(
-            (192, y + 48, 192 + NAME_W, y + 56), 4, fill=(255, 255, 255, 30)
-        )
+        # Count against first place's, with no track behind it: it isn't progress
         share = max(row["count"] / top, 0.02)
         draw.rounded_rectangle(
-            (192, y + 48, 192 + NAME_W * share, y + 56),
-            4,
+            (192, y + 47, 192 + NAME_W * share, y + 53),
+            3,
             fill=(colour or accent) + (255,),
         )
         mx = 192
