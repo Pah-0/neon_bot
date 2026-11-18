@@ -8,12 +8,7 @@ from bot.others.exceptions import StopAutoHandlers
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import (
-    clean_reply,
-    get_args,
-    user_is_admin,
-    user_is_privileged,
-)
+from bot.utils.msg_utils import clean_reply, get_args, user_is_admin, user_is_privileged
 from bot.utils.wa_markdown import looks_like_markdown, md_to_whatsapp
 from bot.workers.handlers.members import (
     admin_check,
