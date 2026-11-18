@@ -133,7 +133,7 @@ async def manage_cmds(event, args, client):
 {pre}kick - *[Owner | Sudo | Admin] Remove members from the group (-c from the whole community)*
 {pre}gban - *[Owner | Sudo | Admin] Ban members from the group: removed now and whenever they rejoin (-c for the whole community; no arguments lists them)*
 {pre}gunban - *[Owner | Sudo | Admin] Lift a group ban (-c a community ban)*
-{pre}add - *[Owner | Sudo | Admin] Add people to the group by number, or -c to the community (sends the invite link if their privacy blocks it)*
+{pre}add - *[Owner | Sudo | Admin] Add people to the group by number, or -c to the community (sends an invite to join if their privacy blocks it)*
 {pre}mute - *[Owner | Sudo | Admin] Auto-delete messages from users, a role's members (-role) or everyone outside a role (-except)*
 
 *Warnings & filters:*

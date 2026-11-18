@@ -1,5 +1,9 @@
 from inspect import getdoc
 
+import aiohttp
+
+from neonize.proto.Neonize_pb2 import GetProfilePictureParams
+from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import GroupInviteMessage, Message
 from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 
 from bot import bot, jid
@@ -389,7 +393,9 @@ async def add(event: Event, args, client):
     """
     [Owner | Sudo | Admin] Add people to this group by phone number. Group
     only; the bot must be a group admin. If someone's privacy settings stop
-    the bot from adding them, they're sent the group's invite link instead.
+    the bot from adding them, they're sent an invite to join that only they
+    can use (WhatsApp's own, which doesn't show the group's link), or the
+    invite link if WhatsApp gives no invite for them.
     Banned users (gban) must be unbanned first.
 
     Usage: add phone_number ... [-c] (with country code, leading + optional)
@@ -412,18 +418,53 @@ async def add(event: Event, args, client):
         notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
         numbers = [n for n in numbers if n not in blocked]
     target = parent if community else event.chat.jid
-    name = "the community" if community else f"*{group_info.GroupName.Name}*"
     try:
         if numbers:
-            notes += await add_numbers(client, target, name, numbers)
+            info = await client.get_group_info(parent) if community else group_info
+            notes += await add_numbers(client, target, info.GroupName.Name, numbers)
         await event.reply("\n".join(notes))
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
 
 
+async def group_thumbnail(client, target) -> bytes | None:
+    """The group's picture as a small JPEG, or None if it has none"""
+    try:
+        info = await client.get_profile_picture(
+            target, GetProfilePictureParams(Preview=True)
+        )
+        if not getattr(info, "URL", None):
+            return None
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(info.URL) as resp:
+                return await resp.read() if resp.status == 200 else None
+    except Exception:
+        return None
+
+
+async def send_invite(client, target, name: str, number: str, request, thumb):
+    """
+    WhatsApp's invite to join for someone who can't be added: it uses the
+    code made for them, so the group's invite link isn't shared
+    """
+    invite = GroupInviteMessage(
+        groupJID=f"{target.User}@{target.Server}",
+        inviteCode=request.Code,
+        inviteExpiration=int(request.Expiration),
+        groupName=name,
+        caption=f"You're invited to join {name}.",
+    )
+    if thumb:
+        invite.JPEGThumbnail = thumb
+    await client.send_message(
+        jid.build_jid(number, "s.whatsapp.net"), Message(groupInviteMessage=invite)
+    )
+
+
 async def add_numbers(client, target, name: str, numbers: list) -> list:
-    """Adds numbers to a group or community; a note on each"""
+    """Adds numbers to a group or community (named name); a note on each"""
     result = await client.update_group_participants(
         target,
         [jid.build_jid(n, "s.whatsapp.net") for n in numbers],
@@ -434,7 +475,7 @@ async def add_numbers(client, target, name: str, numbers: list) -> list:
     for participant in result:
         for user in member_ids(participant):
             by_number[user] = participant
-    notes, link = [], None
+    notes, link, thumb = [], None, False
     for number in numbers:
         if not (participant := by_number.get(number)):
             notes.append(f"*No answer from WhatsApp for {number}.*")
@@ -445,7 +486,14 @@ async def add_numbers(client, target, name: str, numbers: list) -> list:
         why = ADD_ERRORS.get(
             participant.Error, f"couldn't be added (error {participant.Error})"
         )
-        if participant.Error == 403:
+        if participant.Error == 403 and participant.AddRequest.Code:
+            if thumb is False:
+                thumb = await group_thumbnail(client, target)
+            await send_invite(
+                client, target, name, number, participant.AddRequest, thumb
+            )
+            why += "; they were sent an invite to join"
+        elif participant.Error == 403:
             link = link or await client.get_group_invite_link(target)
             await client.send_message(
                 jid.build_jid(number, "s.whatsapp.net"),
