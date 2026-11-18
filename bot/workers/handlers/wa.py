@@ -2328,8 +2328,8 @@ async def tag_alerts(event, args, client):
 
 async def set_bot_tag(event, args, client):
     """
-    [Owner | Sudo | Admin] Set the bot's group tag (member label) in this
-    group. Group only.
+    [Owner | Sudo | Admin | Self] Set the bot's group tag (member label) in
+    this group. Group only.
 
     Usage: mt_set <tag>
            mt_set -rm : remove the bot's tag
@@ -2342,7 +2342,8 @@ async def set_bot_tag(event, args, client):
         no = "https://media1.tenor.com/m/DUHB3rClTaUAAAAd/no-pernalonga.gif"
         user = event.from_user.id
         group_info = await client.get_group_info(event.chat.jid)
-        if not user_is_privileged(user):
+        # Outgoing: typed on the bot's own number
+        if not (event.outgoing or user_is_privileged(user)):
             if not user_is_admin(user, group_info.Participants):
                 return await event.reply_sticker(
                     no,
