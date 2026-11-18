@@ -98,8 +98,8 @@ async def _get_post(session: aiohttp.ClientSession, post_id: str) -> dict:
             except Exception:
                 error = None
             raise RuntimeError(f"Arctic Shift: {
-                    error or f'HTTP {
-                        resp.status}'}")
+                error or f'HTTP {
+                    resp.status}'}")
         posts = (await resp.json()).get("data") or []
     if not posts:
         raise RuntimeError(
