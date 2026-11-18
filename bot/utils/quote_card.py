@@ -282,11 +282,9 @@ def _draw_quote(
     cards = []
     # The bubble is drawn once; each frame only fills the media's place
     for frame in frames:
-        frame = frame.resize(media_size, Image.Resampling.LANCZOS)
-        layer = Image.new("RGBA", media_size, (0, 0, 0, 0))
-        layer.paste(frame, (0, 0), frame if frame.mode == "RGBA" else None)
+        frame = frame.convert("RGBA").resize(media_size, Image.Resampling.LANCZOS)
         framed = card.copy()
-        framed.paste(layer, media_at, ImageChops.multiply(layer.getchannel("A"), mask))
+        framed.paste(frame, media_at, ImageChops.multiply(frame.getchannel("A"), mask))
         cards.append(framed)
     return cards
 
