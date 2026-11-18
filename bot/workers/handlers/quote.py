@@ -237,12 +237,16 @@ def sticker_size(image: Image.Image) -> bytes:
 
 def animated_sticker(cards: list[Image.Image], durations: list[int]) -> bytes:
     """
-    The quote's frames as an animated WebP sticker, at lower quality and
-    then fewer frames until it's within WhatsApp's size limit
+    The quote's frames as an animated WebP sticker: lossless if it fits,
+    else at lower quality and then fewer frames until it's within WhatsApp's
+    size limit
     """
     frames = [fit_sticker(card) for card in cards]
+    # Lossy leaves faint traces of earlier frames on the bubble; lossless
+    # keeps a sticker's flat colours small enough
+    lossless = True
     while True:
-        for quality in (70, 50, 30):
+        for quality in ([None] if lossless else []) + [70, 50, 30]:
             out = io.BytesIO()
             frames[0].save(
                 out,
@@ -251,13 +255,15 @@ def animated_sticker(cards: list[Image.Image], durations: list[int]) -> bytes:
                 append_images=frames[1:],
                 duration=durations,
                 loop=0,
-                quality=quality,
+                lossless=quality is None,
+                quality=quality or 80,
                 method=4,
             )
             if out.tell() <= MAX_STICKER_BYTES:
                 return out.getvalue()
         if len(frames) < 4:
             return out.getvalue()
+        lossless = False
         # Every other frame, each shown twice as long
         frames = frames[::2]
         durations = [sum(durations[i : i + 2]) for i in range(0, len(durations), 2)]
