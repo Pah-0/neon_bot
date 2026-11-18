@@ -31,6 +31,7 @@ from .workers.handlers.call import (
     on_playback_finished,
 )
 from .workers.handlers.chatbot import add_chatbot_handler
+from .workers.handlers.community_log import community_log
 from .workers.handlers.dev import bash, eval_message, get_logs
 from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
@@ -377,6 +378,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("add")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, add, bot.client)
+
+
+@bot.register("communitylog")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, community_log, bot.client)
 
 
 @bot.register("antilink")

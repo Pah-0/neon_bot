@@ -31,7 +31,7 @@ async def getcmds(event, args, client):
         msg = f"""{pre}start - *Hi!*
 {pre}ping - *Check if bot is alive*
 {pre}afk - *Enable AFK mode*
-{pre}id - *Show your ids, or a replied/mentioned user's, with their roles and other community groups*
+{pre}id - *Show your ids, or a replied/mentioned user's, with their roles, other community groups and how often they've rejoined*
 {pre}games - *Get game commands: Werewolf, Genshin, Star Rail and ZZZ*
 {pre}lookup - *Get commands to look up anime, manga, novels, fanfics, films and TV*
 {pre}fun - *Get fun commands*
@@ -137,6 +137,7 @@ async def manage_cmds(event, args, client):
 {pre}gban - *[Owner | Sudo | Admin] Ban members from the group: removed now and whenever they rejoin (-c for the whole community; no arguments lists them)*
 {pre}gunban - *[Owner | Sudo | Admin] Lift a group ban (-c a community ban)*
 {pre}add - *[Owner | Sudo | Admin] Add people to the group by number, or -c to the community (sends an invite to join if their privacy blocks it)*
+{pre}communitylog - *[Owner | Sudo | Community admin] Log here who joins, leaves or is removed from this community and its groups (on/off)*
 {pre}mute - *[Owner | Sudo | Admin] Auto-delete messages from users, a role's members (-role) or everyone outside a role (-except)*
 
 *Warnings & filters:*

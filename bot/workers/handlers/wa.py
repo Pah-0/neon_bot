@@ -111,6 +111,7 @@ from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_resp
 from bot.utils.wa_markdown import md_to_whatsapp
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
+from bot.workers.handlers.community_log import count_rejoins, log_member_changes
 from bot.workers.handlers.guard import start_captchas
 from bot.workers.handlers.members import decline_banned_request, keep_out_banned
 
@@ -2593,6 +2594,9 @@ def get_medals(chat_id, user):
 
 async def gc_handler(gc_msg):
     try:
+        if gc_msg.Join or gc_msg.Leave:
+            await count_rejoins(gc_msg)
+            await log_member_changes(gc_msg)
         leave = None
         if gc_msg.Leave:
             if handled_self_leave(gc_msg):
