@@ -154,7 +154,7 @@ async def manage_cmds(event, args, client):
 {pre}disable - *[Owner | Sudo | Admin] Disable bot in a GC*
 {pre}ytdl_* - *[Owner | Sudo | Admin] Disables/Enables auto media download (anyone in PM)*
 {pre}amr_* - *[Owner | Sudo | Admin] Disables/Enables Auto msg ranking*
-{pre}tagalerts - *[Owner | Sudo | Admin] Announce members' group tag changes (on/off)*
+{pre}mt_alerts - *[Owner | Sudo | Admin] Announce members' group tag changes (on/off)*
 {pre}del - *[Owner | Sudo | Admin] Delete the replied message*
 {pre}gc_info - *[Owner | Sudo | Admin] Get group info*
 

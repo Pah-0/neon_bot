@@ -2246,7 +2246,7 @@ async def rec_member_label(event, args, client):
     """
     Remembers group members' tags (WhatsApp member labels) as they appear on
     their messages or change, for .quote; WhatsApp has no way to ask for them.
-    Changes are announced where tagalerts is on.
+    Changes are announced where mt_alerts is on.
     """
     try:
         if not event.chat.is_group:
@@ -2296,7 +2296,7 @@ async def tag_alerts(event, args, client):
     [Owner | Sudo | Admin] Announce in this group when members set, change or
     remove their group tag. Group only. With no arguments, shows the setting.
 
-    Usage: tagalerts on | off
+    Usage: mt_alerts on | off
     """
     if not event.chat.is_group:
         return await event.react("🚫")
@@ -3728,7 +3728,7 @@ bot.add_handler(delete_rules, "delrules")
 bot.add_handler(list_filters, "filters")
 bot.add_handler(sanitize_url, "sanitize")
 bot.add_handler(markdown_to_wa, "md")
-bot.add_handler(tag_alerts, "tagalerts")
+bot.add_handler(tag_alerts, "mt_alerts")
 bot.add_handler(screenshot, "screenshot")
 bot.add_handler(screenshot_comments_, "screenshot_comments")
 bot.add_handler(upscale_image, "upscale")
