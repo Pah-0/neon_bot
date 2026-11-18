@@ -47,9 +47,7 @@ class DownloadResult:
 
 def is_valid_snapchat_url(url: str) -> bool:
     """True for a Spotlight, story, story snap, highlight or short share link"""
-    return any(
-        r.match(url) for r in (SPOTLIGHT_RE, HIGHLIGHT_RE, STORY_RE, SHORT_RE)
-    )
+    return any(r.match(url) for r in (SPOTLIGHT_RE, HIGHLIGHT_RE, STORY_RE, SHORT_RE))
 
 
 def _ld_json(page: str) -> List[dict]:
@@ -89,7 +87,9 @@ def _sequences(data: str) -> List[tuple[str, List[dict]]]:
             items, _ = decoder.raw_decode(data, m.end())
         except ValueError:
             continue
-        items = [i for i in items if i.get("kind") in ("video", "image") and i.get("src")]
+        items = [
+            i for i in items if i.get("kind") in ("video", "image") and i.get("src")
+        ]
         if items:
             found.append((m.group(1) or "", items))
     return found
