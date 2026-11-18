@@ -8,7 +8,7 @@ import io
 import re
 import zlib
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .bot_utils import sync_to_async
 from .card_text import draw_rich, load_emojis, profile_picture, rich_width, wrap
@@ -286,9 +286,7 @@ def _draw_quote(
         layer = Image.new("RGBA", media_size, (0, 0, 0, 0))
         layer.paste(frame, (0, 0), frame if frame.mode == "RGBA" else None)
         framed = card.copy()
-        framed.paste(
-            layer, media_at, Image.composite(layer.getchannel("A"), mask, mask)
-        )
+        framed.paste(layer, media_at, ImageChops.multiply(layer.getchannel("A"), mask))
         cards.append(framed)
     return cards
 
