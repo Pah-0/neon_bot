@@ -68,7 +68,7 @@ None of these need an API key.
 
 ## Commands
 
-The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds` in chat for the built-in help; it points to `.games`, `.lookup`, `.tools`, `.fun`, `.roles` and `.manage`, which list the commands below. Most commands reply with their full help when sent with `-h` or without arguments.
+The default command prefix is `.`; change it with `CMD_PREFIX`. Use `.cmds` (`.help`) in chat for the built-in help; it points to `.games`, `.lookup`, `.tools`, `.fun`, `.roles` and `.manage`, which list the commands below. Most commands reply with their full help when sent with `-h` or without arguments.
 
 ### General
 - `.start`: Say hi.
@@ -93,19 +93,19 @@ Each sends buttons to pick from when several titles match (or a poll if buttons 
 - `.fic <title|work id|link>`: An AO3 work.
 
 ### Media & Tools
-- `.sticker`: Convert replied media to a sticker.
-- `.stick2img`: Convert a sticker back to an image/GIF.
+- `.sticker` (`.s`): Convert replied media to a sticker.
+- `.stick2img` (`.img`): Convert a sticker back to an image/GIF.
 - `.kang`: Kang a replied sticker.
-- `.upscale` / `.batch_upscale`: Upscale a replied image / album.
+- `.upscale` (`.up`) / `.batch_upscale`: Upscale a replied image / album.
 - `.mp3`: Convert a replied video to audio.
 - `.doc`: Convert replied media to a document.
 - `.compress`: Compress a replied video.
-- `.fps` / `.mediainfo`: Get the FPS / mediainfo of a replied video.
+- `.fps` / `.mediainfo` (`.mi`): Get the FPS / mediainfo of a replied video.
 - `.sanitize_video`: Make a replied video playable.
 - `.tikmate [url]`: Download a TikTok video.
-- `.screenshot [url]`: Take a screenshot of a website.
+- `.screenshot [url]` (`.ss`): Take a screenshot of a website.
 - `.screenshot_comments [url]`: Take long screenshots of an X or YouTube post's comments.
-- `.quote [-img]`: Turn a replied message into a quote sticker, or a picture with `-img`.
+- `.quote [-img]` (`.q`): Turn a replied message into a quote sticker, or a picture with `-img`.
 - `.insession` / `.renderobj`: Mark the start of an objection session / render it up to the replied message as an Ace Attorney video.
 - `.sanitize [url]`: Sanitize a link or replied message.
 - `.autotranslate [language | off] [-i languages]`: Translate messages that aren't in the chat's language, optionally leaving some languages alone (e.g. `-i pcm`). Owner, sudo and admins in groups.
@@ -129,7 +129,7 @@ Each sends buttons to pick from when several titles match (or a poll if buttons 
 - `.role_tags <role> [on|off]`: Stop or resume getting tagged by a role without leaving it.
 - `.add2role` / `.rm_from_role`: Add or remove users from a role.
 - `@role_name` (or `@role_names`) in a group message tags the role's members; when the message replies to another, the tag says who sent it; each role can be tagged once a minute, and users can create up to 10 roles per group (admins, owner and sudo are exempt from both).
-- `.msg_ranking [-f] [-text]`: Get the group message leaderboard card; `-f` for everyone, `-text` as text.
+- `.msg_ranking [-f] [-text]` (`.rank`): Get the group message leaderboard card; `-f` for everyone, `-text` as text.
 - `.amr_enable [weekly/monthly]` / `.amr_disable`: Toggle automatic message ranking.
 - `.pin` / `.unpin`: Pin or unpin a replied message.
 - `.purge`: Mass delete messages.
@@ -151,7 +151,7 @@ Each sends buttons to pick from when several titles match (or a poll if buttons 
 
 ### Fun
 - `.cat` / `.dog` / `.coub`: Random cat, dog, or Coub media.
-- `.gif [query]` / `.gsticker [query]`: Random GIF or sticker from search results.
+- `.gif [query]` / `.gsticker [query]` (`.gs`): Random GIF or sticker from search results.
 - `.meme [subreddit]`: Random meme.
 
 ### Owner & Dev
