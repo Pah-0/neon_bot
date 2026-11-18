@@ -941,9 +941,9 @@ async def group_standing(event, client, ids: set) -> list[str]:
 async def show_ids(event, args, client):
     """
     Show your WhatsApp ids, or the replied or mentioned user's, and the chat's;
-    in a group, also their roles there and the other groups of its community
-    the bot sees them in. Phone numbers are only shown in a private chat with
-    the bot.
+    in a group, also their roles there, the other groups of its community
+    the bot sees them in, and how often they've rejoined it (from 2 times).
+    Phone numbers are only shown in a private chat with the bot.
     Usage: id [@user]
     """
     user = event.from_user.id
@@ -965,6 +965,10 @@ async def show_ids(event, args, client):
         lines.append(f"- *Chat:* {event.chat.id}@{event.chat.server}")
         if event.chat.is_group:
             lines += await group_standing(event, client, {lid} | {number} - {None})
+            # Once is shown as nothing, like never
+            rejoins = bot.group_dict.get(event.chat.id, {}).get("rejoins", {})
+            if (times := rejoins.get(lid, 0)) > 1:
+                lines.append(f"- *Rejoined:* {times} times")
         await event.reply("\n".join(lines))
     except Exception:
         await logger(Exception)

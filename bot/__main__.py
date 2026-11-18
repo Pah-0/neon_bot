@@ -60,6 +60,7 @@ from .workers.handlers.manage import (
     ytdl_enable,
 )
 from .workers.handlers.media_dl import youtube_reply
+from .workers.handlers.community_log import community_log
 from .workers.handlers.members import add, gban, gunban, kick
 from .workers.handlers.moderation import (
     antilink,
@@ -377,6 +378,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("add")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, add, bot.client)
+
+
+@bot.register("communitylog")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, community_log, bot.client)
 
 
 @bot.register("antilink")
