@@ -36,7 +36,7 @@ from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
 from .workers.handlers.genshin import farm, gift_codes
 from .workers.handlers.guard import autolock, captcha
-from .workers.handlers.hoyo import hoyo_search
+from .workers.handlers.hoyo import hoyo_search, wuwa
 from .workers.handlers.lookup import fic, imdb, manga, novel
 from .workers.handlers.manage import (
     auto_del_as_mute,
@@ -287,6 +287,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("search")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, hoyo_search, client)
+
+
+@bot.register("wuwa")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, wuwa, client)
 
 
 @bot.register("gi")

@@ -88,6 +88,63 @@ async def fetch_codes() -> list[dict]:
     raise RuntimeError("Couldn't fetch Genshin codes: " + "; ".join(errors))
 
 
+# The Wuthering Waves wiki's code list; its Active table is parsed
+WW_CODES_URL = (
+    "https://wutheringwaves.fandom.com/api.php"
+    "?action=parse&page=Redemption_Code&prop=wikitext&format=json"
+)
+
+
+def parse_ww_codes(wikitext: str) -> list[dict]:
+    """
+    Active codes as [{"code", "rewards": [str], "until": str | None}] from
+    the wiki's "Active" table
+    """
+    match = re.search(r"===\s*Active\s*===(.*?)(?:\n==|\Z)", wikitext, re.S)
+    if not match:
+        raise ValueError("Unexpected code page format")
+    codes = {}
+    for row in match.group(1).split("|-"):
+        code = re.search(r"<code>\s*([^<]+?)\s*</code>", row)
+        if not code or not _valid_code.fullmatch(code.group(1)):
+            continue
+        rewards = re.search(r"\{\{Card List\|([^|}]*)", row)
+        until = re.search(r"Valid until:\s*([^'<\n]+)", row)
+        until = until.group(1).strip() if until else None
+        codes.setdefault(
+            code.group(1).casefold(),
+            {
+                "code": code.group(1),
+                "rewards": parse_rewards(rewards.group(1)) if rewards else [],
+                "until": None if until in (None, "Unknown") else until,
+            },
+        )
+    return list(codes.values())
+
+
+async def fetch_ww_codes() -> list[dict]:
+    """The active Wuthering Waves codes listed on the wiki"""
+    timeout = aiohttp.ClientTimeout(total=20)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(WW_CODES_URL) as resp:
+            resp.raise_for_status()
+            data = await resp.json(content_type=None)
+    return parse_ww_codes(data["parse"]["wikitext"]["*"])
+
+
+def get_msg_from_ww_codes(codes: list) -> str:
+    # Kuro has no web page for redeeming, so codes are sent as text
+    msg = "*Wuthering Waves Redeem Codes*\n\n"
+    for no, code in enumerate(codes, start=1):
+        rewards = "\n".join(f"• {r}" for r in code["rewards"]) or "• Unknown"
+        msg += f"*{no}.* {code['code']}\n{rewards}\n"
+        if code["until"]:
+            msg += f"_Valid until {code['until']}_\n"
+        msg += "\n"
+    msg += "_Redeem in game: Terminal ➤ Settings ➤ Other Settings ➤ Redemption Code._"
+    return msg
+
+
 def get_msg_from_codes(codes: list, auto: bool = False):
     msg = "*Genshin Impact Redeem Codes*\n\n"
     for no, code in enumerate(codes, start=1):
