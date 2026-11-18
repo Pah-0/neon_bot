@@ -162,7 +162,7 @@ async def tools(event, args, client):
             f"{' *(models: ' + ', '.join(UPSCALE_MODELS) + ')*' if conf.MODAL_UPSCALE_API else ''}{s}"
             f"{pre}batch_upscale - {'*Upscale replied album images* *(models: ' + ', '.join(UPSCALE_MODELS) + ')*' if conf.MODAL_UPSCALE_API else '_Currently not available!_'}{s}"
             f"{s}"
-            f"{pre}md - *Clean up Markdown pasted from Discord and the like for WhatsApp*{s}"
+            f"{pre}md - *Clean up Markdown pasted from Discord and the like for WhatsApp (-auto: replace it automatically)*{s}"
             f"{pre}msg_ranking - *Get the group's message leaderboard card (-f everyone, -text as text)*{s}"
             f"{pre}pin - *[Owner | Sudo | Admin] Pin a replied message*{s}"
             f"{pre}unpin - *[Owner | Sudo | Admin] Unpin a replied message*{s}"
@@ -799,8 +799,14 @@ async def markdown_to_wa(event, args, client):
 
     Usage:
         Reply to a message, or put the text after the command.
+        -auto: [Owner | Sudo | Admin] Turn on (or off) replacing Markdown
+               messages in this group automatically: the cleaned text is
+               sent as a reply to what the original replied to and the
+               original deleted. Group only; the bot must be a group admin.
     """
     user = event.from_user.id
+    if args.casefold() == "-auto":
+        return await toggle_auto_markdown(event, client)
     if not user_is_privileged(user):
         if not chat_is_allowed(event):
             return
@@ -816,6 +822,37 @@ async def markdown_to_wa(event, args, client):
         if not text.strip():
             return await event.reply(f"{markdown_to_wa.__doc__}")
         await event.reply(md_to_whatsapp(text))
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+
+
+async def toggle_auto_markdown(event, client):
+    if not event.chat.is_group:
+        return await event.react("🚫")
+    try:
+        no = "https://media1.tenor.com/m/DUHB3rClTaUAAAAd/no-pernalonga.gif"
+        user = event.from_user.id
+        group_info = await client.get_group_info(event.chat.jid)
+        if not user_is_privileged(user):
+            if not user_is_admin(user, group_info.Participants):
+                return await event.reply_sticker(
+                    no,
+                    name="Seriously though, No.",
+                    packname="N.",
+                )
+        settings = bot.group_dict.setdefault(event.chat.id, {})
+        enable = not settings.get("auto_md")
+        if enable and not user_is_admin(
+            bot.client.me.JID.User, group_info.Participants
+        ):
+            return await event.reply("*I need to be admin for that to work*")
+        settings.update(auto_md=enable)
+        await save2db2(bot.group_dict, "groups")
+        await event.reply(
+            f"Successfully {'enabled' if enable else 'disabled'} auto Markdown "
+            f"replacement in group: *{group_info.GroupName.Name}*"
+        )
     except Exception:
         await logger(Exception)
         await event.react("❌")

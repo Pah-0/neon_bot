@@ -3,11 +3,18 @@ from inspect import getdoc
 from urllib.parse import urlsplit
 
 from bot import bot
+from bot.config import conf
 from bot.others.exceptions import StopAutoHandlers
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_args, user_is_admin, user_is_privileged
+from bot.utils.msg_utils import (
+    clean_reply,
+    get_args,
+    user_is_admin,
+    user_is_privileged,
+)
+from bot.utils.wa_markdown import looks_like_markdown, md_to_whatsapp
 from bot.workers.handlers.members import (
     admin_check,
     find_member,
@@ -16,6 +23,7 @@ from bot.workers.handlers.members import (
     tag,
     targets,
 )
+from bot.workers.handlers.wa import uncounted
 
 DEFAULT_WARN_LIMIT = 3
 # Links with a scheme or www., or bare domains on common TLDs (chat.whatsapp.com…);
@@ -431,5 +439,51 @@ async def punish_filtered(event: Event, _, client):
     raise StopAutoHandlers("message matched a punishing filter")
 
 
+async def replace_markdown(event: Event, _, client):
+    """
+    Resends a message written in Markdown as WhatsApp text, as a reply to
+    what it replied to, and deletes the original, where auto_md is on and
+    the bot is a group admin.
+    AUTO FUNCTION
+    """
+    if not event.chat.is_group or event.outgoing:
+        return
+    if not bot.group_dict.get(event.chat.id, {}).get("auto_md"):
+        return
+    # Only text: resending a caption would lose its media
+    if event.type != "text" or event.is_edit or not (text := event.text):
+        return
+    if text.startswith(conf.CMD_PREFIX) or not looks_like_markdown(text):
+        return
+    try:
+        group_info = await client.get_group_info(event.chat.jid)
+    except Exception:
+        await logger(Exception)
+        return
+    if not user_is_admin(bot.client.me.JID.User, group_info.Participants):
+        return
+    author = event.from_user
+    replied = event.reply_to_message
+    try:
+        await clean_reply(
+            event,
+            replied,
+            "reply",
+            f"*{author.name or '@' + author.id}:*\n\n{md_to_whatsapp(text)}",
+            quote=bool(replied),
+            mentions_are_lids=event.lid_address,
+        )
+        # It isn't counted on the leaderboard (the handlers stop here), so
+        # its deletion mustn't take it off
+        uncounted[(event.chat.id, event.id)] = True
+        await event.delete()
+    except Exception:
+        await logger(Exception)
+        return
+    raise StopAutoHandlers("message in Markdown was replaced")
+
+
 bot.add_handler(delete_links, SEQUENTIAL_AUTO)
 bot.add_handler(punish_filtered, SEQUENTIAL_AUTO)
+# After the handlers that delete messages, so none of those is resent
+bot.add_handler(replace_markdown, SEQUENTIAL_AUTO)
