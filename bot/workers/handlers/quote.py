@@ -116,6 +116,8 @@ def sticker_frames(webp: bytes) -> tuple[list[Image.Image], list[int]]:
         for frame in ImageSequence.Iterator(image):
             if elapsed >= MAX_MS:
                 break
+            # A frame's duration is only read once it's loaded
+            frame.load()
             duration = frame.info.get("duration") or 100
             elapsed += duration
             # Frames quicker than FPS are merged into the one before
