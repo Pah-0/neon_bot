@@ -63,7 +63,6 @@ def is_valid_reddit_url(url: str) -> bool:
     return any(r.match(url) for r in (POST_RE, SHARE_RE, SHORT_RE, VIDEO_RE))
 
 
-
 def is_reddit_share_url(url: str) -> bool:
     return bool(SHARE_RE.match(url))
 
@@ -98,7 +97,9 @@ async def _get_post(session: aiohttp.ClientSession, post_id: str) -> dict:
                 error = (await resp.json()).get("error")
             except Exception:
                 error = None
-            raise RuntimeError(f"Arctic Shift: {error or f'HTTP {resp.status}'}")
+            raise RuntimeError(f"Arctic Shift: {
+                    error or f'HTTP {
+                        resp.status}'}")
         posts = (await resp.json()).get("data") or []
     if not posts:
         raise RuntimeError(
@@ -223,7 +224,10 @@ async def _download_video(
         return
     audio_file = dest + ".audio"
     await _download_file(
-        session, urllib.parse.urljoin(base, max(audio)[1]), audio_file, progress_callback
+        session,
+        urllib.parse.urljoin(base, max(audio)[1]),
+        audio_file,
+        progress_callback,
     )
     cmd = [
         "ffmpeg",
