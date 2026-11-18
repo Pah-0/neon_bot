@@ -67,7 +67,10 @@ async def game_cmds(event, args, client):
 
 *Genshin, Star Rail & ZZZ:*
 {pre}gi / {pre}hsr / {pre}zzz - *Genshin, Star Rail or ZZZ profile and character build cards from Enka.Network (-set <uid> to save yours)*
-{pre}search - *Look up a Genshin, Star Rail or ZZZ character, weapon or set (-t talents, -c constellations; matches and sections come as buttons, -poll for a poll)*"""
+{pre}search - *Look up a Genshin, Star Rail, ZZZ or Wuthering Waves character, weapon or set (-t talents, -c constellations; matches and sections come as buttons, -poll for a poll)*
+
+*Wuthering Waves:*
+{pre}wuwa - *Look up a resonator, weapon, echo or sonata effect (-t forte, -c resonance chain), or -codes for the active redeem codes*"""
         await event.reply(space_commands(msg, pre))
     except Exception as e:
         await logger(Exception)

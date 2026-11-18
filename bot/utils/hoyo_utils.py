@@ -1,7 +1,8 @@
 """
 Game data lookups for .search: Genshin Impact from Project Amber
-(gi.yatta.moe), Honkai: Star Rail from Project Yatta (sr.yatta.moe) and
-Zenless Zone Zero from Hakushin (static.nanoka.cc).
+(gi.yatta.moe), Honkai: Star Rail from Project Yatta (sr.yatta.moe),
+Zenless Zone Zero from Hakushin (static.nanoka.cc) and Wuthering Waves from
+Encore (api.encore.moe).
 """
 
 import asyncio
@@ -21,18 +22,33 @@ HSR_API = "https://sr.yatta.moe/api/v2/en/"
 HSR_ASSETS = "https://sr.yatta.moe/hsr/assets/UI/"
 ZZZ_DATA = "https://static.nanoka.cc/"
 ZZZ_ASSETS = "https://static.nanoka.cc/assets/zzz/"
+WW_API = "https://api.encore.moe/en/"
+# Game paths like /Game/Aki/UI/.../T_Icon_UI.T_Icon_UI are served under this
+WW_ASSETS = "https://api-v2.encore.moe/resource/Data"
 
-GAMES = {"gi": "Genshin Impact", "hsr": "Honkai: Star Rail", "zzz": "Zenless Zone Zero"}
+GAMES = {
+    "gi": "Genshin Impact",
+    "hsr": "Honkai: Star Rail",
+    "zzz": "Zenless Zone Zero",
+    "wuwa": "Wuthering Waves",
+}
 KINDS = {
     "gi": {"character": "Character", "weapon": "Weapon", "set": "Artifact Set"},
     "hsr": {"character": "Character", "weapon": "Light Cone", "set": "Relic Set"},
     "zzz": {"character": "Agent", "weapon": "W-Engine", "set": "Drive Disc"},
+    "wuwa": {
+        "character": "Resonator",
+        "weapon": "Weapon",
+        "echo": "Echo",
+        "set": "Sonata Effect",
+    },
 }
 # Sections .search can add with a flag, per game: flag -> title
 SECTIONS = {
     "gi": {"t": "Talents", "c": "Constellations"},
     "hsr": {"t": "Traces", "c": "Eidolons"},
     "zzz": {"t": "Skills", "c": "Mindscapes"},
+    "wuwa": {"t": "Forte", "c": "Resonance Chain"},
 }
 # Names change with patches; a few hours is fresh enough
 CACHE_TTL = 6 * 60 * 60
@@ -205,6 +221,7 @@ def short(text: str | None, limit: int = 400) -> str:
 # Talent levels shown by default: the highest without constellation boosts
 GI_TALENT_LEVEL = 10
 ZZZ_SKILL_LEVEL = 12
+WW_SKILL_LEVEL = 10
 
 
 def _gi_param(value: float, fmt: str) -> str:
@@ -416,8 +433,98 @@ async def _zzz_index(session) -> list[dict]:
     return entries
 
 
+def ww_asset(path: str | None) -> str | None:
+    """An Encore image URL for a game path; full URLs are kept"""
+    if not path or path.startswith("http"):
+        return path or None
+    folder, _, name = path.rpartition("/")
+    return f"{WW_ASSETS}{folder}/{name.split('.', 1)[0]}.webp"
+
+
+# Echo classes, weakest first, as item colours
+WW_ECHO_CLASSES = {"Common": 2, "Elite": 3, "Overlord": 4, "Calamity": 5}
+
+
+async def _ww_index(session) -> list[dict]:
+    chars, weapons, echoes = await asyncio.gather(
+        get_json(session, WW_API + "character"),
+        get_json(session, WW_API + "weapon"),
+        get_json(session, WW_API + "echo"),
+    )
+    entries = []
+    seen = set()
+    # Rover has a male and a female entry per element, with the same name
+    for char in chars["roleList"]:
+        if char["Name"] in seen:
+            continue
+        seen.add(char["Name"])
+        entries.append(
+            {
+                "kind": "character",
+                "id": char["Id"],
+                "name": char["Name"],
+                "rarity": char["QualityId"],
+            }
+        )
+    seen.clear()
+    for weapon in weapons["weapons"]:
+        if weapon["Name"] in seen:
+            continue
+        seen.add(weapon["Name"])
+        entries.append(
+            {
+                "kind": "weapon",
+                "id": weapon["Id"],
+                "name": weapon["Name"],
+                "rarity": weapon["QualityId"],
+            }
+        )
+    seen.clear()
+    sets, set_echoes = {}, {}
+    for echo in echoes["Echo"]:
+        # "Phantom: Crownless" is a skin of Crownless, so it doesn't show a set
+        skin = echo["Name"].startswith("Phantom")
+        for group in echo.get("FetterGroups") or []:
+            sets.setdefault(group["Id"], group)
+            if not skin and echo.get("Icon"):
+                # Some echoes are listed more than once under one name
+                set_echoes.setdefault(group["Id"], {}).setdefault(
+                    _normalise(echo["Name"]), echo
+                )
+        if echo["Name"] in seen:
+            continue
+        seen.add(echo["Name"])
+        entries.append(
+            {"kind": "echo", "id": echo["Id"], "name": echo["Name"], "rarity": 4}
+        )
+    for group in sets.values():
+        # Sets have no page of their own, so their bonuses come along
+        entries.append(
+            {
+                "kind": "set",
+                "id": group["Id"],
+                "name": group["Name"],
+                "rarity": 5,
+                "pieces": [
+                    (f["Key"], f["EffectDescription"])
+                    for f in sorted(group.get("Fetters") or [], key=lambda f: f["Key"])
+                ],
+                # Its strongest echoes show it; Rarity is the class, 0 Common
+                # to 3 Calamity
+                "icons": [
+                    e["Icon"]
+                    for e in sorted(
+                        set_echoes.get(group["Id"], {}).values(),
+                        key=lambda e: -e.get("Rarity", 0),
+                    )[:4]
+                ],
+            }
+        )
+    return entries
+
+
 async def get_index() -> list[dict]:
-    """Every searchable entry of the three games, cached for CACHE_TTL"""
+    """Every searchable entry of the games, cached for CACHE_TTL"""
     async with _lock:
         if _cache["index"] and time.time() - _cache["time"] < CACHE_TTL:
             return _cache["index"]
@@ -427,6 +534,7 @@ async def get_index() -> list[dict]:
                 _gi_index(session),
                 _hsr_index(session),
                 _zzz_index(session),
+                _ww_index(session),
                 return_exceptions=True,
             )
         for game, result in zip(GAMES, results):
@@ -531,6 +639,12 @@ ELEMENT_COLOURS = {
     "Quantum": (82, 70, 160),
     "Imaginary": (176, 146, 44),
     "Ether": (178, 64, 120),
+    "Glacio": (72, 146, 178),
+    "Fusion": (176, 70, 48),
+    "Electro": (118, 74, 172),
+    "Aero": (40, 140, 118),
+    "Spectro": (176, 146, 44),
+    "Havoc": (150, 44, 96),
 }
 ICON, ICON_GAP = 92, 22
 
@@ -1026,6 +1140,168 @@ async def _zzz_set(session, entry) -> tuple:
     return [f"{ZZZ_ASSETS}{icon}.webp"], False, caption, {}
 
 
+def ww_clean(text: str | None, bold: bool = False) -> str:
+    """
+    Encore's HTML to plain text; skill headings in bold, and with bold the
+    highlighted values too (merged like *4%/6.2%/8.4%*, or one value when
+    every rank has the same)
+    """
+    if not text:
+        return ""
+    text = re.sub(r"<br\s*/?>", "\n", text)
+    text = re.sub(r"<span[^>]*text-3xl[^>]*>([^<]*)</span>", r"*\1*", text)
+    if bold:
+
+        def value(m):
+            parts = m.group(1).split("/")
+            return parts[0] if len(set(parts)) == 1 else f"*{m.group(1)}*"
+
+        text = re.sub(r'<span[^>]*class="font-bold"[^>]*>([^<]*)</span>', value, text)
+    text = re.sub(r"</?(span|te|size|color)\b[^>]*>", "", text)
+    lines = [line.strip() for line in clean(text).split("\n")]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def _ww_number(value) -> str:
+    """A stat as the game shows it: 10,825, 412, 4.5, 5%"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{number:,.0f}" if number >= 100 or number.is_integer() else f"{number:g}"
+
+
+def _ww_stats(properties: list, names: tuple | None = None) -> str:
+    """Each property's value at the top level, e.g. "HP 10,825 · ATK 412" """
+    stats = []
+    for prop in properties or []:
+        if names and prop.get("Name") not in names:
+            continue
+        growth = prop.get("GrowthValues") or []
+        top = growth[-1] if growth else {}
+        value = top.get("value", top.get("Value", prop.get("BaseValue")))
+        stats.append(f"{prop['Name']} {_ww_number(value)}")
+    return " · ".join(stats)
+
+
+async def _ww_character(session, entry) -> tuple:
+    data = await get_json(session, f"{WW_API}character/{entry['id']}")
+    info = data.get("favorRole") or {}
+
+    def fact(key):
+        value = (info.get(key) or {}).get("Content")
+        return "" if not value or value == "Unknown" else ww_clean(value)
+
+    caption = f"*{entry['name']}*\n{stars(data['QualityId'])}\n\n"
+    caption += f"*Attribute:* {data.get('ElementName', '')}\n"
+    caption += f"*Weapon:* {data.get('WeaponTypeName', '')}\n"
+    if tags := [t["TagName"] for t in data.get("Tags") or [] if t.get("TagName")]:
+        caption += f"*Roles:* {', '.join(tags)}\n"
+    if fact("Country"):
+        caption += f"*Nation:* {fact('Country')}\n"
+    if fact("Influence"):
+        caption += f"*Affiliation:* {fact('Influence')}\n"
+    if fact("Birthday"):
+        caption += f"*Birthday:* {fact('Birthday')}\n"
+    if stats := _ww_stats(data.get("Properties"), ("HP", "ATK", "DEF")):
+        caption += f"*Lv. {data.get('MaxLevel', 90)}:* {stats}\n"
+    if fact("Info"):
+        caption += f"> {short(fact('Info'))}\n"
+
+    chain = sorted(data.get("ResonantChain") or [], key=lambda c: c["GroupIndex"])
+    if chain:
+        caption += (
+            "\n*Resonance Chain:* "
+            + ", ".join(f"S{c['GroupIndex']} {c['NodeName']}" for c in chain)
+            + "\n"
+        )
+    level = entry.get("level") or WW_SKILL_LEVEL
+
+    def skill_text(skill):
+        text = f"*{skill['SkillName']}* _({skill['SkillType']})_\n"
+        text += ww_clean(skill.get("SkillDescribe"))
+        rows = [
+            f"• {a['attributeName']}: {a['values'][min(level, len(a['values'])) - 1]}"
+            for a in skill.get("SkillAttributes") or []
+            if a.get("values")
+        ]
+        if rows:
+            shown = min(level, max(len(a["values"]) for a in skill["SkillAttributes"]))
+            text += f"\n\n_Lv. {shown}_\n" + "\n".join(rows)
+        return text
+
+    sections = {
+        "t": "\n\n".join(
+            skill_text(s) for s in data.get("Skills") or [] if s.get("SkillName")
+        ),
+        "c": "\n\n".join(
+            f"*S{c['GroupIndex']} · {c['NodeName']}*\n"
+            + ww_clean(c.get("AttributesDescription"))
+            for c in chain
+        ),
+    }
+    # The full-body art; the event portrait and head icon if it's missing
+    urls = [
+        ww_asset(data.get(k))
+        for k in ("FormationRoleCard", "RolePortrait", "RoleHeadIconLarge")
+        if data.get(k)
+    ]
+    entry["style"] = {
+        "element": data.get("ElementName", ""),
+        "icons": [ww_asset(c["NodeIcon"]) for c in chain if c.get("NodeIcon")],
+    }
+    return urls, False, caption, sections
+
+
+async def _ww_weapon(session, entry) -> tuple:
+    data = await get_json(session, f"{WW_API}weapon/{entry['id']}")
+    caption = f"*{entry['name']}*\n{stars(data['QualityId'])}\n\n"
+    caption += f"*Type:* {data.get('WeaponTypeName', '')}\n"
+    if stats := _ww_stats(data.get("Properties")):
+        caption += f"*Lv. 90:* {stats}\n"
+    if data.get("Desc"):
+        name = data.get("ResonName")
+        caption += f"\n*{name}*\n" if name else "\n"
+        caption += ww_clean(data["Desc"], bold=True) + "\n"
+    if lore := data.get("BgDescription") or data.get("AttributesDescription"):
+        caption += f"\n> {short(ww_clean(lore))}\n"
+    urls = [ww_asset(data.get(k)) for k in ("IconBig", "Icon") if data.get(k)]
+    return urls, False, caption, {}
+
+
+async def _ww_echo(session, entry) -> tuple:
+    data = await get_json(session, f"{WW_API}echo/{entry['id']}")
+    book = data.get("Handbook") or {}
+    skill = data.get("Skill") or {}
+    caption = f"*{entry['name']}*\n\n"
+    if klass := book.get("Intensity"):
+        caption += f"*Class:* {klass}\n"
+        entry["rarity"] = WW_ECHO_CLASSES.get(klass.split()[0], 4)
+    if element := (data.get("Element") or {}).get("Name"):
+        caption += f"*Attribute:* {element}\n"
+    if place := book.get("Place"):
+        caption += f"*Found in:* {place}\n"
+    sonatas = [
+        d["Group"]["FetterGroupName"]
+        for d in data.get("FetterGroupDetails") or []
+        if d.get("Group")
+    ]
+    if sonatas:
+        caption += f"*Sonata Effects:* {', '.join(sonatas)}\n"
+    if skill.get("DescriptionEx"):
+        caption += f"\n*Echo Skill*\n{ww_clean(skill['DescriptionEx'])}\n"
+    urls = [ww_asset(data.get(k)) for k in ("IconBig", "Icon") if data.get(k)]
+    return urls, False, caption, {}
+
+
+async def _ww_set(session, entry) -> tuple:
+    caption = f"*{entry['name']}*\n\n"
+    for pieces, effect in entry.get("pieces") or []:
+        caption += f"*{pieces}-Pc:* {ww_clean(effect)}\n"
+    urls = entry.get("icons") or []
+    return urls, len(urls) > 1, caption, {}
+
+
 BUILDERS = {
     ("gi", "character"): _gi_character,
     ("gi", "weapon"): _gi_weapon,
@@ -1036,6 +1312,10 @@ BUILDERS = {
     ("zzz", "character"): _zzz_character,
     ("zzz", "weapon"): _zzz_weapon,
     ("zzz", "set"): _zzz_set,
+    ("wuwa", "character"): _ww_character,
+    ("wuwa", "weapon"): _ww_weapon,
+    ("wuwa", "echo"): _ww_echo,
+    ("wuwa", "set"): _ww_set,
 }
 
 

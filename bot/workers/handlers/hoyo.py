@@ -7,6 +7,7 @@ from inspect import getdoc
 from bot.config import bot, conf
 from bot.utils.bot_utils import split_text
 from bot.utils.buttons import on_button, send_buttons, sender_ids
+from bot.utils.gift_utils import fetch_ww_codes, get_msg_from_ww_codes
 from bot.utils.hoyo_utils import (
     GAMES,
     KINDS,
@@ -29,7 +30,12 @@ from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_resp
 # Matches offered as buttons (10 per message); a poll takes at most 12
 MAX_CHOICES = 20
 MAX_POLL_CHOICES = 12
-KIND_FLAGS = {"-char": "character", "-weapon": "weapon", "-set": "set"}
+KIND_FLAGS = {
+    "-char": "character",
+    "-weapon": "weapon",
+    "-echo": "echo",
+    "-set": "set",
+}
 # Searches whose buttons can still be pressed: token -> what they need; the
 # oldest go first, and they expire
 SEARCH_BUTTONS_MAX = 50
@@ -164,23 +170,27 @@ async def search_button(event, data: str):
 
 async def hoyo_search(event, args, client):
     """
-    Looks up a character, weapon or set in Genshin Impact, Honkai: Star Rail
-    or Zenless Zone Zero. If a name matches several, buttons are sent to pick
-    one (or a poll, with -poll or if buttons can't be sent); under a
-    character, buttons send its talents, traces or skills and its
-    constellations, eidolons or mindscapes. Data from Project Amber, Project
-    Yatta and Hakushin.
+    Looks up a character, weapon or set in Genshin Impact, Honkai: Star Rail,
+    Zenless Zone Zero or Wuthering Waves. If a name matches several, buttons
+    are sent to pick one (or a poll, with -poll or if buttons can't be
+    sent); under a character, buttons send its talents, traces, skills or
+    forte and its constellations, eidolons, mindscapes or resonance chain.
+    Data from Project Amber, Project Yatta, Hakushin and Encore.
 
     Usage: search <name> [flags]
     Flags:
-        -gi, -hsr, -zzz : only search this game
+        -gi, -hsr, -zzz, -wuwa : only search this game
         -char, -weapon, -set : only search characters, weapons (light cones,
-            W-Engines) or sets (artifacts, relics, drive discs)
-        -t : also send a character's talents, traces or skills
-        -c : also send a character's constellations, eidolons or mindscapes
+            W-Engines) or sets (artifacts, relics, drive discs, sonata
+            effects)
+        -echo : only search Wuthering Waves echoes
+        -t : also send a character's talents, traces, skills or forte
+        -c : also send a character's constellations, eidolons, mindscapes
+            or resonance chain
         -full (or -f) : send both, like -t -c
         -lv <n> : the talent/trace/skill level for -t's scaling (default:
-            10 for Genshin, each trace's cap for Star Rail, 12 for ZZZ)
+            10 for Genshin, each trace's cap for Star Rail, 12 for ZZZ, 10
+            for Wuthering Waves)
         -poll : pick between matches with a poll instead of buttons
     """
     user = event.from_user.id
@@ -243,3 +253,48 @@ async def hoyo_search(event, args, client):
         await logger(Exception)
         _search_buttons.pop(token, None)
         await pick_by_poll(event, results, level, sections)
+
+
+async def wuwa(event, args, client):
+    """
+    Wuthering Waves: looks up a resonator, weapon, echo or sonata effect
+    (like search -wuwa), or lists the active redeem codes. Data from Encore;
+    codes from the Wuthering Waves wiki.
+
+    Usage: wuwa <name> [flags] | wuwa -codes
+    Flags:
+        -codes : list the active redeem codes
+        -char, -weapon, -echo, -set : only search resonators, weapons,
+            echoes or sonata effects
+        -t : also send a resonator's forte
+        -c : also send a resonator's resonance chain
+        -full (or -f) : send both, like -t -c
+        -lv <n> : the skill level for -t's multipliers (default: 10)
+        -poll : pick between matches with a poll instead of buttons
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    if not args.strip():
+        return await event.reply(getdoc(wuwa))
+    if args.split()[0].casefold() != "-codes":
+        # Other games' flags would override -wuwa
+        args = " ".join(
+            w
+            for w in args.split()
+            if not (w.startswith("-") and w[1:].casefold() in GAMES)
+        )
+        return await hoyo_search(event, f"{args} -wuwa", client)
+    try:
+        async with event.react("🌐"):
+            codes = await fetch_ww_codes()
+        await event.reply(
+            get_msg_from_ww_codes(codes) if codes else "*No active codes right now.*"
+        )
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+        await event.reply("*Couldn't fetch the codes right now.*")
