@@ -441,7 +441,9 @@ async def replace_markdown(event: Event, _, client):
     the bot is a group admin.
     AUTO FUNCTION
     """
-    if not event.chat.is_group or event.outgoing:
+    # Outgoing ones are typed on the bot's number on another device: WhatsApp
+    # doesn't send a device back its own messages
+    if not event.chat.is_group:
         return
     if not bot.group_dict.get(event.chat.id, {}).get("auto_md"):
         return
