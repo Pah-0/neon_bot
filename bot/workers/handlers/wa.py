@@ -18,6 +18,8 @@ from neonize.exc import DownloadError
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import (
     FutureProofMessage,
     InteractiveMessage,
+    MemberLabel,
+    ProtocolMessage,
 )
 from neonize.utils.enum import MediaType
 from neonize.utils.ffmpeg import AFFmpeg
@@ -2324,6 +2326,56 @@ async def tag_alerts(event, args, client):
         await event.react("❌")
 
 
+async def set_bot_tag(event, args, client):
+    """
+    [Owner | Sudo | Admin] Set the bot's group tag (member label) in this
+    group. Group only.
+
+    Usage: mt_set <tag>
+           mt_set -rm : remove the bot's tag
+    """
+    if not event.chat.is_group:
+        return await event.react("🚫")
+    if not args:
+        return await event.reply(f"{set_bot_tag.__doc__}")
+    try:
+        no = "https://media1.tenor.com/m/DUHB3rClTaUAAAAd/no-pernalonga.gif"
+        user = event.from_user.id
+        group_info = await client.get_group_info(event.chat.jid)
+        if not user_is_privileged(user):
+            if not user_is_admin(user, group_info.Participants):
+                return await event.reply_sticker(
+                    no,
+                    name="Seriously though, No.",
+                    packname="N.",
+                )
+        label = "" if args.casefold() == "-rm" else args.strip()
+        # Sent like a member's own tag change; an empty label removes it
+        await client.send_message(
+            event.chat.jid,
+            Message(
+                protocolMessage=ProtocolMessage(
+                    type=MEMBER_LABEL_CHANGE,
+                    memberLabel=MemberLabel(
+                        label=label, labelTimestamp=int(time.time())
+                    ),
+                )
+            ),
+        )
+        # WhatsApp doesn't send the bot its own change, so it's saved here
+        me = bot.client.me or await bot.client.get_me()
+        labels = bot.group_dict.setdefault(event.chat.id, {}).setdefault(
+            "member_labels", {}
+        )
+        for key in {me.JID.User, me.LID.User} - {""}:
+            labels[key] = label
+        bot.msg_leaderboard_counter += 1
+        await event.reply(f"*Tag set to:* {label}" if label else "*Tag removed.*")
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+
+
 def get_member_label(chat_id, user) -> str:
     labels = bot.group_dict.get(chat_id, {}).get("member_labels", {})
     for key in member_label_keys(user):
@@ -3729,6 +3781,7 @@ bot.add_handler(list_filters, "filters")
 bot.add_handler(sanitize_url, "sanitize")
 bot.add_handler(markdown_to_wa, "md")
 bot.add_handler(tag_alerts, "mt_alerts")
+bot.add_handler(set_bot_tag, "mt_set")
 bot.add_handler(screenshot, "screenshot")
 bot.add_handler(screenshot_comments_, "screenshot_comments")
 bot.add_handler(upscale_image, "upscale")
