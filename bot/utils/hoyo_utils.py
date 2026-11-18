@@ -1168,7 +1168,9 @@ def _ww_number(value) -> str:
         number = float(value)
     except (TypeError, ValueError):
         return str(value)
-    return f"{number:,.0f}" if number >= 100 or number.is_integer() else f"{number:g}"
+    return f"{
+        number:,.0f}" if number >= 100 or number.is_integer() else f"{
+        number:g}"
 
 
 def _ww_stats(properties: list, names: tuple | None = None) -> str:
