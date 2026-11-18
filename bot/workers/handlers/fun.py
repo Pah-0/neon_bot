@@ -3,7 +3,7 @@ from urllib.parse import quote_plus
 
 from bot.config import bot, conf
 from bot.fun.stickers import SMIRNOFF, random_sticker
-from bot.utils.bot_utils import get_json, png_to_jpg, space_commands
+from bot.utils.bot_utils import get_bytes, get_json, png_to_jpg, space_commands
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
     chat_is_allowed,
@@ -109,7 +109,7 @@ async def getmeme(event, args, client):
                     as_gif=True,
                 )
             if url.endswith(".png"):
-                url = await png_to_jpg(url)
+                url = await png_to_jpg(await get_bytes(url))
             await event.reply_photo(
                 caption=caption,
                 photo=url,
