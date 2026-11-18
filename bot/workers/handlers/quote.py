@@ -57,7 +57,7 @@ async def quote(event, args, client):
                 return await event.reply_photo(out.getvalue())
             me = bot.client.me or await bot.client.get_me()
             if len(cards) > 1:
-                # Sent as made: the sticker converter can't read animated WebP
+                # Already a sized WebP sticker, so it isn't converted again
                 webp = await sync_to_async(animated_sticker, cards, durations)
                 return await event.reply_sticker(
                     webp,
