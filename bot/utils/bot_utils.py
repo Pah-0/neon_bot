@@ -128,6 +128,13 @@ async def get_json(link):
         return await result.json()
 
 
+async def get_bytes(link):
+    async with aiohttp.ClientSession() as requests:
+        result = await requests.get(link)
+        result.raise_for_status()
+        return await result.read()
+
+
 async def get_text(link):
     async with aiohttp.ClientSession() as requests:
         result = await requests.get(link)
