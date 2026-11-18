@@ -9,6 +9,7 @@ from bot.config import bot
 from bot.others.exceptions import NormalizeVidError
 from bot.pkgs.insta_dl import download_instagram
 from bot.pkgs.pinterest_dl import download_pinterest
+from bot.pkgs.reddit_dl import download_reddit
 from bot.pkgs.snapchat_dl import download_snapchat
 from bot.pkgs.tiktok_dl import download_tiktok
 from bot.pkgs.twitter_dl import download_twitter
@@ -39,6 +40,7 @@ class Listener:
     stop_progress: bool = False
     is_insta: bool = False
     is_pintrest: bool = False
+    is_reddit: bool = False
     is_snapchat: bool = False
     is_tiktok: bool = False
     is_twitter: bool = False
@@ -281,6 +283,13 @@ class MediaHelper:
                 quiet=True,
                 progress_callback=self._on_download_progress,
                 cookie_file=".cookies.txt",
+            )
+        elif self._listener.is_reddit:
+            return await download_reddit(
+                url=url,
+                output_dir=path,
+                quiet=True,
+                progress_callback=self._on_download_progress,
             )
         elif self._listener.is_snapchat:
             return await download_snapchat(
