@@ -8,7 +8,7 @@ import io
 import re
 import zlib
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from .bot_utils import sync_to_async
 from .card_text import draw_rich, load_emojis, profile_picture, rich_width, wrap
@@ -115,12 +115,13 @@ def _draw_quote(
     name: str,
     colour: tuple,
     text: str,
-    media,
+    frames: list,
     avatar,
     emojis,
     reply: dict | None,
     tag: str = "",
-) -> bytes:
+) -> list[Image.Image]:
+    """The quote, once for each of the media's frames (once without media)"""
     lines = wrap(text, TEXT_SIZE, False, MAX_TEXT_W, emojis) if text else []
     line_h = int(TEXT_SIZE * 1.42)
     name_w = rich_width(name, NAME_SIZE, True, emojis)
@@ -133,6 +134,7 @@ def _draw_quote(
     text_w = max(
         (rich_width(line, TEXT_SIZE, False, emojis) for line in lines), default=0
     )
+    media = frames[0] if frames else None
     media_size = (0, 0)
     if media is not None:
         media = media.copy()
@@ -265,23 +267,26 @@ def _draw_quote(
             emojis,
         )
         y += reply_h + 14
+    media_at = (int(x), int(y))
     if media is not None:
-        big = Image.new("L", (media_size[0] * SS, media_size[1] * SS), 0)
-        ImageDraw.Draw(big).rounded_rectangle((0, 0, *big.size), 18 * SS, fill=255)
-        mask = big.resize(media_size, Image.Resampling.LANCZOS)
-        layer = Image.new("RGBA", media_size, (0, 0, 0, 0))
-        layer.paste(media, (0, 0), media if media.mode == "RGBA" else None)
-        card.paste(
-            layer, (int(x), int(y)), Image.composite(layer.getchannel("A"), mask, mask)
-        )
         y += media_size[1] + 14
     for line in lines:
         draw_rich(card, draw, (x, y), line, TEXT_SIZE, False, TEXT, emojis)
         y += line_h
+    if media is None:
+        return [card]
 
-    output = io.BytesIO()
-    card.save(output, format="png")
-    return output.getvalue()
+    big = Image.new("L", (media_size[0] * SS, media_size[1] * SS), 0)
+    ImageDraw.Draw(big).rounded_rectangle((0, 0, *big.size), 18 * SS, fill=255)
+    mask = big.resize(media_size, Image.Resampling.LANCZOS)
+    cards = []
+    # The bubble is drawn once; each frame only fills the media's place
+    for frame in frames:
+        frame = frame.convert("RGBA").resize(media_size, Image.Resampling.LANCZOS)
+        framed = card.copy()
+        framed.paste(frame, media_at, ImageChops.multiply(frame.getchannel("A"), mask))
+        cards.append(framed)
+    return cards
 
 
 async def quote_card(
@@ -289,14 +294,15 @@ async def quote_card(
     jid,
     name: str,
     text: str,
-    media: bytes | None,
+    media: bytes | list[Image.Image] | None,
     reply: dict | None = None,
     tag: str = "",
-) -> bytes:
+) -> list[Image.Image]:
     """
-    A PNG (transparent around the bubble) of a message quoted as a chat
-    bubble. reply: {user, name, text, tag} of the message it answered, if
-    any; tag: the sender's group tag.
+    A message quoted as a chat bubble (transparent around it), as one image,
+    or one for each frame when media is an animation's frames.
+    reply: {user, name, text, tag} of the message it answered, if any;
+    tag: the sender's group tag.
     """
     text = strip_markup(text or "").strip()
     if reply:
@@ -306,16 +312,18 @@ async def quote_card(
         (reply["name"], reply["text"], reply.get("tag") or "") if reply else ()
     )
     await ensure_fonts(name, text, tag, *reply_texts)
-    image = None
-    if media:
+    frames = []
+    if isinstance(media, list):
+        frames = media
+    elif media:
         try:
-            image = Image.open(io.BytesIO(media)).convert("RGBA")
+            frames = [Image.open(io.BytesIO(media)).convert("RGBA")]
         except Exception:
-            image = None
+            frames = []
     picture, emojis = await asyncio.gather(
         profile_picture(jid), load_emojis(name, text, tag, *reply_texts)
     )
     avatar = picture or avatar_fallback(name, name_colour(user))
     return await sync_to_async(
-        _draw_quote, name, name_colour(user), text, image, avatar, emojis, reply, tag
+        _draw_quote, name, name_colour(user), text, frames, avatar, emojis, reply, tag
     )
