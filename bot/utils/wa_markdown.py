@@ -107,3 +107,27 @@ def md_to_whatsapp(text: str) -> str:
     while HELD.search(text):
         text = HELD.sub(lambda m: held[int(m.group(1))], text)
     return text
+
+
+# Markers WhatsApp doesn't use, so a message with one was written as Markdown;
+# *one star* and _underscores_ are WhatsApp's own
+MARKDOWN_ONLY = (
+    STRONG,
+    STRIKETHROUGH,
+    HEADER,
+    SUBTEXT,
+    LINK,
+    SPOILER,
+    TIMESTAMP,
+    CUSTOM_EMOJI,
+    DISCORD_REF,
+    re.compile(r"(?m)^>>>[^\S\n]"),
+)
+
+
+def looks_like_markdown(text: str) -> bool:
+    """Whether text has Markdown that md_to_whatsapp would change"""
+    bare = INLINE_CODE.sub("", CODE_BLOCK.sub("", text))
+    if not any(pattern.search(bare) for pattern in MARKDOWN_ONLY):
+        return False
+    return md_to_whatsapp(text) != text.strip()
