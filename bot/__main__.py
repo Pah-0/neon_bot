@@ -31,6 +31,7 @@ from .workers.handlers.call import (
     on_playback_finished,
 )
 from .workers.handlers.chatbot import add_chatbot_handler
+from .workers.handlers.community_log import community_log
 from .workers.handlers.dev import bash, eval_message, get_logs
 from .workers.handlers.fun import getmeme
 from .workers.handlers.game import werewolf_handler, werewolf_restriction_handler
@@ -60,7 +61,6 @@ from .workers.handlers.manage import (
     ytdl_enable,
 )
 from .workers.handlers.media_dl import youtube_reply
-from .workers.handlers.community_log import community_log
 from .workers.handlers.members import add, gban, gunban, kick
 from .workers.handlers.moderation import (
     antilink,
