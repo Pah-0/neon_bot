@@ -9,6 +9,7 @@ from urlextract import URLExtract
 from bot.config import bot
 from bot.pkgs.insta_dl import is_valid_instagram_url
 from bot.pkgs.pinterest_dl import is_valid_pinterest_url
+from bot.pkgs.snapchat_dl import is_valid_snapchat_url
 from bot.pkgs.spotify_dl import (
     get_spotify_collection,
     is_spotify_collection,
@@ -112,8 +113,10 @@ async def youtube_reply(event: Event, args: str, client):
     (see ytdl_enable); ignores edited messages.
     Downloads and uploads media from supported links in a message: any site
     supported by yt-dlp (generic pages only for facebook.com), plus Instagram,
-    Pinterest, TikTok and Twitter/X, which use dedicated downloaders first and
-    fall back to yt-dlp. YouTube Music links are sent as mp3, YouTube posts as
+    Pinterest, Snapchat, TikTok and Twitter/X, which use dedicated downloaders
+    first and fall back to yt-dlp. Snapchat takes Spotlight, public story,
+    story snap and highlight links (the first 30 snaps of a story or
+    highlight). YouTube Music links are sent as mp3, YouTube posts as
     images, playlists (their first 25 entries; #all for all) as a folder upload.
     Files over 100MB are sent as documents.
     Spotify track links are looked up on YouTube Music and sent as mp3;
@@ -161,6 +164,7 @@ async def youtube_reply(event: Event, args: str, client):
                 is_valid_spotify_url,
                 is_valid_instagram_url,
                 is_valid_pinterest_url,
+                is_valid_snapchat_url,
                 is_valid_tiktok_url,
                 is_valid_twitter_url,
             ]
@@ -252,6 +256,8 @@ async def youtube_reply(event: Event, args: str, client):
                     tryAlt = listener.is_insta = True
                 elif is_valid_pinterest_url(listener.link):
                     tryAlt = listener.is_pintrest = True
+                elif is_valid_snapchat_url(listener.link):
+                    tryAlt = listener.is_snapchat = True
                 elif is_valid_twitter_url(listener.link):
                     tryAlt = listener.is_twitter = True
                 if tryAlt:
