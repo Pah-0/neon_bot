@@ -2245,13 +2245,15 @@ def member_label_keys(user) -> set:
 async def rec_member_label(event, args, client):
     """
     Remembers group members' tags (WhatsApp member labels) as they appear on
-    their messages or change, for .quote; WhatsApp has no way to ask for them
+    their messages or change, for .quote; WhatsApp has no way to ask for them.
+    Changes are announced where tagalerts is on.
     """
     try:
         if not event.chat.is_group:
             return
         label = None
-        if event.protocol and event.protocol.type == MEMBER_LABEL_CHANGE:
+        is_change = event.protocol and event.protocol.type == MEMBER_LABEL_CHANGE
+        if is_change:
             # An empty label means the tag was removed
             label = event.protocol.memberLabel.label
         else:
@@ -2260,9 +2262,9 @@ async def rec_member_label(event, args, client):
                 label = context.memberLabel.label
         if label is None:
             return
-        labels = bot.group_dict.setdefault(event.chat.id, {}).setdefault(
-            "member_labels", {}
-        )
+        old = get_member_label(event.chat.id, event.from_user)
+        group = bot.group_dict.setdefault(event.chat.id, {})
+        labels = group.setdefault("member_labels", {})
         changed = False
         for key in member_label_keys(event.from_user) | {event.user.id}:
             if labels.get(key) != label:
@@ -2271,8 +2273,55 @@ async def rec_member_label(event, args, client):
         if changed:
             # Saved with the leaderboard counts on their timer
             bot.msg_leaderboard_counter += 1
+        # Only the change itself: a tag first seen on a message isn't news
+        if is_change and old != label and group.get("tag_alerts"):
+            if not chat_is_allowed(event):
+                return
+            who = f"@{event.from_user.id}"
+            if not label:
+                text = f"{who} removed their tag *{old}*"
+            elif old:
+                text = f"{who} changed their tag from *{old}* to *{label}*"
+            else:
+                text = f"{who} set their tag to *{label}*"
+            await event.reply(
+                f"🏷️ {text}", quote=False, mentions_are_lids=event.lid_address
+            )
     except Exception:
         await logger(Exception)
+
+
+async def tag_alerts(event, args, client):
+    """
+    [Owner | Sudo | Admin] Announce in this group when members set, change or
+    remove their group tag. Group only. With no arguments, shows the setting.
+
+    Usage: tagalerts on | off
+    """
+    if not event.chat.is_group:
+        return await event.react("🚫")
+    try:
+        no = "https://media1.tenor.com/m/DUHB3rClTaUAAAAd/no-pernalonga.gif"
+        user = event.from_user.id
+        group_info = await client.get_group_info(event.chat.jid)
+        if not user_is_privileged(user):
+            if not user_is_admin(user, group_info.Participants):
+                return await event.reply_sticker(
+                    no,
+                    name="Seriously though, No.",
+                    packname="N.",
+                )
+        settings = bot.group_dict.setdefault(event.chat.id, {})
+        if args.casefold() in ("on", "off"):
+            settings.update(tag_alerts=args.casefold() == "on")
+            await save2db2(bot.group_dict, "groups")
+        elif args:
+            return await event.reply(f"{tag_alerts.__doc__}")
+        state = "on" if settings.get("tag_alerts") else "off"
+        await event.reply(f"*Tag change announcements are {state}.*")
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
 
 
 def get_member_label(chat_id, user) -> str:
@@ -3679,6 +3728,7 @@ bot.add_handler(delete_rules, "delrules")
 bot.add_handler(list_filters, "filters")
 bot.add_handler(sanitize_url, "sanitize")
 bot.add_handler(markdown_to_wa, "md")
+bot.add_handler(tag_alerts, "tagalerts")
 bot.add_handler(screenshot, "screenshot")
 bot.add_handler(screenshot_comments_, "screenshot_comments")
 bot.add_handler(upscale_image, "upscale")
