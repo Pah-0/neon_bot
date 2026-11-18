@@ -32,7 +32,7 @@ async def fun(event, args, client):
             f"{pre}coub [topic] - *Get a random coub video link (default: Anime)*{s}"
             f"{pre}dog - *Get a random dog pic/video*{s}"
             f"{pre}gif [search] - *Get a random GIF matching search (default: anime)*{s}"
-            f"{pre}gsticker [search] - *Get a random sticker matching search (default: anime)*{s}"
+            f"{pre}gsticker ({pre}gs) [search] - *Get a random sticker matching search (default: anime)*{s}"
             f"{pre}meme [subreddit] - *Get a random reddit meme*{s}"
             f"{pre}smirnoff - *Get a random Smirnoff sticker*"
         )

@@ -674,6 +674,19 @@ SEQUENTIAL_AUTO = 0
 CONCURRENT_AUTO = 1
 function_dict = {CONCURRENT_AUTO: [], SEQUENTIAL_AUTO: []}
 anti_duplicate = deque(maxlen=10000)
+# Short names for commands: command -> aliases. They're registered with
+# their command, so they're in function_dict wherever commands are looked up
+ALIASES = {
+    "quote": ["q"],
+    "sticker": ["s"],
+    "gsticker": ["gs"],
+    "stick2img": ["img"],
+    "upscale": ["up"],
+    "screenshot": ["ss"],
+    "mediainfo": ["mi"],
+    "msg_ranking": ["rank"],
+    "cmds": ["help"],
+}
 
 
 def register(key: str | int | None = 1):
@@ -686,6 +699,8 @@ def register(key: str | int | None = 1):
         elif not key:
             function_dict.update({key: fn})
         else:
+            for alias in ALIASES.get(key, ()):
+                function_dict[conf.CMD_PREFIX + alias] = fn
             key = conf.CMD_PREFIX + key
             function_dict.update({key: fn})
 
@@ -711,6 +726,8 @@ def add_handler(function, command: str | int | None = 1, **kwargs):
 def unregister(key: str | Callable):
     """Unregisters an event handler"""
     if isinstance(key, str):
+        for alias in ALIASES.get(key, ()):
+            function_dict.pop(conf.CMD_PREFIX + alias, None)
         key = conf.CMD_PREFIX + key
         function_dict.pop(key)
     else:
