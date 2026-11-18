@@ -9,6 +9,11 @@ from urlextract import URLExtract
 from bot.config import bot
 from bot.pkgs.insta_dl import is_valid_instagram_url
 from bot.pkgs.pinterest_dl import is_valid_pinterest_url
+from bot.pkgs.reddit_dl import (
+    is_reddit_share_url,
+    is_valid_reddit_url,
+    resolve_share_url,
+)
 from bot.pkgs.snapchat_dl import is_valid_snapchat_url
 from bot.pkgs.spotify_dl import (
     get_spotify_collection,
@@ -113,11 +118,17 @@ async def youtube_reply(event: Event, args: str, client):
     (see ytdl_enable); ignores edited messages.
     Downloads and uploads media from supported links in a message: any site
     supported by yt-dlp (generic pages only for facebook.com), plus Instagram,
-    Pinterest, Snapchat, TikTok and Twitter/X, which use dedicated downloaders
-    first and fall back to yt-dlp. Snapchat takes Spotlight, public story,
-    story snap and highlight links (the first 30 snaps of a story or
-    highlight). YouTube Music links are sent as mp3, YouTube posts as
-    images, playlists (their first 25 entries; #all for all) as a folder upload.
+    Pinterest, Reddit, Snapchat, TikTok and Twitter/X, which use dedicated
+    downloaders first and fall back to yt-dlp. Snapchat takes Spotlight,
+    public story, story snap and highlight links (the first 30 snaps of a
+    story or highlight). Reddit blocks the server, so Reddit posts are looked
+    up in Arctic Shift's archive (a few minutes behind) and their video,
+    images or gallery fetched from Reddit's media servers; removed posts are
+    refused. Share links (/s/) are resolved through reddit.com, sending any
+    Reddit cookies in .cookies.txt (where Reddit blocks the server, only a
+    login gets through); if that fails, the bot asks for the full link.
+    YouTube Music links are sent as mp3, YouTube posts as images, playlists
+    (their first 25 entries; #all for all) as a folder upload.
     Files over 100MB are sent as documents.
     Spotify track links are looked up on YouTube Music and sent as mp3;
     playlist and album links send their first 25 tracks that way (#all for up
@@ -164,6 +175,7 @@ async def youtube_reply(event: Event, args: str, client):
                 is_valid_spotify_url,
                 is_valid_instagram_url,
                 is_valid_pinterest_url,
+                is_valid_reddit_url,
                 is_valid_snapchat_url,
                 is_valid_tiktok_url,
                 is_valid_twitter_url,
@@ -245,6 +257,20 @@ async def youtube_reply(event: Event, args: str, client):
                         job[0:1] = tracks
                         continue
                     job[0] = await spotify_to_ytmusic(job[0])
+                if is_reddit_share_url(job[0]):
+                    try:
+                        job[0] = await resolve_share_url(job[0], ".cookies.txt")
+                    except Exception:
+                        # Reddit blocks the server, and there's no Reddit
+                        # login in the cookie file to get past it
+                        await logger(Exception)
+                        await event.reply(
+                            "*Couldn't open that Reddit share link.*\nOpen it"
+                            " and send the link it goes to (…/comments/…)"
+                            " instead."
+                        )
+                        job.pop(0)
+                        continue
                 alt_listener = listener = MediaListener(job[0])
                 tryAlt = False
 
@@ -256,6 +282,8 @@ async def youtube_reply(event: Event, args: str, client):
                     tryAlt = listener.is_insta = True
                 elif is_valid_pinterest_url(listener.link):
                     tryAlt = listener.is_pintrest = True
+                elif is_valid_reddit_url(listener.link):
+                    tryAlt = listener.is_reddit = True
                 elif is_valid_snapchat_url(listener.link):
                     tryAlt = listener.is_snapchat = True
                 elif is_valid_twitter_url(listener.link):
