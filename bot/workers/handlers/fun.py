@@ -1,21 +1,32 @@
 import random
+import time
+from inspect import getdoc
 from urllib.parse import quote_plus
 
 from bot.config import bot, conf
 from bot.fun.stickers import SMIRNOFF, random_sticker
-from bot.utils.bot_utils import get_bytes, get_json, png_to_jpg, space_commands
+from bot.utils.bot_utils import get_json, space_commands
+from bot.utils.db_utils import save2db2
 from bot.utils.log_utils import logger
+from bot.utils.meme_utils import (
+    MAX_MINUTES,
+    MIN_MINUTES,
+    NoMeme,
+    format_interval,
+    meme_media,
+    parse_interval,
+    random_meme,
+)
 from bot.utils.msg_utils import (
     chat_is_allowed,
     clean_reply,
     construct_msg_and_evt,
+    user_is_admin,
     user_is_allowed,
     user_is_privileged,
 )
 
 from .media_dl import youtube_reply
-
-meme_list = []
 
 
 async def fun(event, args, client):
@@ -34,6 +45,7 @@ async def fun(event, args, client):
             f"{pre}gif [search] - *Get a random GIF matching search (default: anime)*{s}"
             f"{pre}gsticker ({pre}gs) [search] - *Get a random sticker matching search (default: anime)*{s}"
             f"{pre}meme [subreddit] - *Get a random reddit meme*{s}"
+            f"{pre}automeme <interval> [subreddit] - *[Owner | Sudo | Admin] Post a random meme to the group every so often, e.g. 2h (off to stop)*{s}"
             f"{pre}smirnoff - *Get a random Smirnoff sticker*"
         )
         await event.reply(space_commands(msg, pre))
@@ -42,46 +54,14 @@ async def fun(event, args, client):
         await event.react("❌")
 
 
-async def gen_meme(link, pm=False):
-    i = 1
-    while True:
-        result = await get_json(link)
-        _id = result.get("ups")
-        title = result.get("title")
-        if not title:
-            return None, None, None, None
-        author = result.get("author")
-        pl = result.get("postLink")
-        if i > 100:
-            raise Exception("Request Timeout!")
-        i += 1
-        if pl in meme_list:
-            continue
-        if len(meme_list) > 10000:
-            meme_list.clear()
-        nsfw = result.get("nsfw")
-        if bot.block_nsfw and nsfw and not pm:
-            return None, None, None, True
-        meme_list.append(pl)
-        sb = result.get("subreddit")
-        nsfw_text = "*🔞 NSFW*\n"
-        caption = f"{
-            nsfw_text if nsfw else ''}*{
-            title.strip()}*\n{pl}\n\nBy u/{author} in r/{sb}"
-        url = result.get("url")
-        filename = f"{_id}.{url.split('.')[-1]}"
-        nsfw = False if pm else nsfw
-        break
-    return caption, url, filename, nsfw
-
-
 async def getmeme(event, args, client):
     """
-    Fetches a random reddit meme via meme-api.com and sends it as a photo or gif.
+    Sends a random reddit meme as a photo or gif, from any time in the
+    subreddit's history (via Arctic Shift; meme-api.com when that fails).
     NSFW memes are blocked in groups when NSFW blocking is on; otherwise in groups they are sent as view-once.
 
     Arguments:
-        subreddit: [Optional] subreddit to fetch from (default: random; numeric input is ignored)
+        subreddit: [Optional] subreddit to fetch from (default: memes, dankmemes, me_irl or wholesomememes; numeric input is ignored)
     """
     user = event.from_user.id
     if not user_is_privileged(user):
@@ -89,35 +69,87 @@ async def getmeme(event, args, client):
             return
         if not user_is_allowed(user):
             return await event.react("⛔")
-    link = "https://meme-api.com/gimme"
     try:
         async with event.react("🌐"):
-            if args:
-                link += f"/{args}" if not args.isdigit() else ""
-            caption, url, filename, nsfw = await gen_meme(
-                link, not (event.chat.is_group)
-            )
-            if not url:
-                if nsfw:
-                    return await event.reply("*NSFW is blocked!*")
-                return await event.reply("*Request Failed!*")
-            if url.endswith(".gif"):
+            sub = args.strip().removeprefix("r/") if args else None
+            group = event.chat.is_group
+            try:
+                meme = await random_meme(
+                    None if not sub or sub.isdigit() else sub,
+                    allow_nsfw=not (group and bot.block_nsfw),
+                )
+            except NoMeme as e:
+                return await event.reply(f"*{e}*")
+            viewonce = meme.nsfw and group
+            media = await meme_media(meme)
+            if meme.url.lower().endswith(".gif"):
                 return await event.reply_gif(
-                    caption=caption,
-                    gif=url,
-                    viewonce=nsfw,
+                    caption=meme.caption,
+                    gif=media,
+                    viewonce=viewonce,
                     as_gif=True,
                 )
-            if url.endswith(".png"):
-                url = await png_to_jpg(await get_bytes(url))
             await event.reply_photo(
-                caption=caption,
-                photo=url,
-                viewonce=nsfw,
+                caption=meme.caption,
+                photo=media,
+                viewonce=viewonce,
             )
     except Exception as e:
         await logger(Exception)
         return await event.reply(f"*Error:*\n{e}")
+
+
+async def automeme(event, args, client):
+    """
+    [Owner | Sudo | Admin] Post a random meme to this group every so often.
+    Auto-posted memes are never NSFW. Group only. With no arguments, shows
+    the setting.
+
+    Usage: automeme <interval> [subreddit]
+               e.g. automeme 2h, automeme 30m dankmemes
+           automeme off
+        interval: like 30m, 2h or 1d (15m to 7d)
+        subreddit: default: memes, dankmemes, me_irl or wholesomememes
+    """
+    try:
+        if not event.chat.is_group:
+            return await event.react("🚫")
+        user = event.from_user.id
+        if not user_is_privileged(user):
+            group_info = await client.get_group_info(event.chat.jid)
+            if not user_is_admin(user, group_info.Participants):
+                return await event.react("🚫")
+        group = bot.group_dict.setdefault(event.chat.id, {})
+        words = (args or "").split()
+        if words == ["off"]:
+            group.pop("automeme", None)
+            await save2db2(bot.group_dict, "groups")
+            return await event.reply("*Auto memes are off.*")
+        if words:
+            minutes = parse_interval(words[0])
+            if (
+                len(words) > 2
+                or not minutes
+                or not MIN_MINUTES <= minutes <= MAX_MINUTES
+            ):
+                return await event.reply(getdoc(automeme))
+            sub = words[1].removeprefix("r/") if len(words) > 1 else None
+            group["automeme"] = {
+                "every": minutes,
+                "sub": sub,
+                "next": time.time() + minutes * 60,
+            }
+            await save2db2(bot.group_dict, "groups")
+        if not (auto := group.get("automeme")):
+            return await event.reply(f"*No auto memes here.*\n\n{getdoc(automeme)}")
+        source = f"r/{auto['sub']}" if auto.get("sub") else "Reddit"
+        await event.reply(
+            f"*A random meme from {source} is posted here every "
+            f"{format_interval(auto['every'])}.*"
+        )
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
 
 
 async def cat(event, args, client):

@@ -154,7 +154,8 @@ Each sends buttons to pick from when several titles match (or a poll if buttons 
 ### Fun
 - `.cat` / `.dog` / `.coub`: Random cat, dog, or Coub media.
 - `.gif [query]` / `.gsticker [query]` (`.gs`): Random GIF or sticker from search results.
-- `.meme [subreddit]`: Random meme.
+- `.meme [subreddit]`: Random meme from any time in the subreddit's history (via Arctic Shift's Reddit archive; meme-api.com when that's down). Without a subreddit, from r/memes, r/dankmemes, r/me_irl or r/wholesomememes.
+- `.automeme <interval> [subreddit]` / `.automeme off`: Post a random meme to the group every so often (e.g. `2h` or `30m dankmemes`, from 15m to 7d); never NSFW. Group admins only.
 
 ### Owner & Dev
 - `.sudo [-a/-rm/-c]`: Manage sudo users.
