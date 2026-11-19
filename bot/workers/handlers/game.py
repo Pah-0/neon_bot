@@ -1,6 +1,7 @@
 import asyncio
 import random
 import re
+import time
 import uuid
 
 from bot import sudo_btn_lock
@@ -247,6 +248,7 @@ async def handle_game_command(game, event, cmd_type):
             return await event.reply("Invalid target.")
 
         player.vote = target.user_id
+        player.vote_at = time.monotonic()
         await event.reply(f"You voted to lynch {target.name}!")
 
     elif cmd_type == "retract":
@@ -303,20 +305,22 @@ async def handle_game_command(game, event, cmd_type):
         )
 
         hit_chance = 1.0 if "sharpshooter" in player.templates else 0.8
-        # wolves intentionally miss other wolves
-        if player.actual_team == "wolf" and target.actual_team == "wolf":
+        # wolves intentionally miss other wolves; the werekitten is too cute to hit
+        if (
+            player.actual_team == "wolf" and target.actual_team == "wolf"
+        ) or target.role == "werekitten":
             hit_chance = 0
         if random.random() < hit_chance:
             if target.actual_team == "wolf":
                 extra = await game.kill(target, "shot")
                 await game.send_lobby(
-                    f"Bullseye! *{target.name}* was a *{target.role}* and has been shot dead.\n{extra}"
+                    f"Bullseye! *{target.name}* was a *{target.death_role}* and has been shot dead.\n{extra}"
                 )
             else:
                 if random.random() < 0.5:
                     extra = await game.kill(target, "shot")
                     await game.send_lobby(
-                        f"Oh no! *{target.name}* was an innocent *{target.role}* but has been shot dead.\n{extra}"
+                        f"Oh no! *{target.name}* was an innocent *{target.death_role}* but has been shot dead.\n{extra}"
                     )
                 else:
                     target.is_injured = True

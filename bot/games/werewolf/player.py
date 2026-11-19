@@ -1,3 +1,4 @@
+from .defaults import ROLES_SEEN_VILLAGER, ROLES_SEEN_WOLF
 from .roles import roles
 
 
@@ -31,21 +32,34 @@ class Player:
         self.loves = []  # List of user_ids
         self.cloning_target = None
         self.execution_target = None
+        self.assassin_target = None  # the assassin template's target
+        self.hidden_role = None  # what an amnesiac remembers being on night 3
+        self.vote_at = 0.0  # when they last voted, for the desperation totem
         self.side = "villagers" if self.team == "villager" else "wolves"
         self.hexed = False
         self.sick = False
         self.is_cursed = False
-        self.is_blessed = False
         self.is_guarded = False
         self.is_entranced = False
         self.is_charmed = False
 
     @property
     def display_role(self):
-        # Detective sees true identity, Seer sees cursed villager as wolf
-        if "cursed villager" in self.templates:
+        """What the seer sees; only the detective learns the true role"""
+        if "cursed villager" in self.templates or self.role in ROLES_SEEN_WOLF:
             return "wolf"
+        if self.role in ROLES_SEEN_VILLAGER:
+            return "villager"
         return self.role
+
+    @property
+    def death_role(self):
+        """The role shown when they die; a traitor is buried as a villager"""
+        return "villager" if self.role == "traitor" else self.role
+
+    @property
+    def is_blessed(self):
+        return "blessed villager" in self.templates or "blessed" in self.other
 
     @property
     def actual_team(self):

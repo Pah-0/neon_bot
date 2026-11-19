@@ -14,6 +14,7 @@ from bot.utils.sudo_button_utils import (
 
 from .defaults import (
     COMMANDS_FOR_ROLE,
+    DAY_COMMANDS,
     DETECTIVE_REVEAL_CHANCE,
     PLAYER_TIMEOUT,
     PLAYER_TIMEOUT2,
@@ -22,6 +23,13 @@ from .defaults import (
     WOLFCHAT_ROLES,
     lang,
 )
+from .roles import roles
+
+NIGHT_ACTIONS = {
+    cmd: roles_ for cmd, roles_ in COMMANDS_FOR_ROLE.items() if cmd not in DAY_COMMANDS
+}
+# totems (and a doomsayer's lycanthropy) that act the night after they're given
+DELAYED_EFFECTS = ["luck_totem", "misdirection_totem", "deceit_totem", "lycanthropy"]
 
 
 def win_condition(game):
@@ -190,8 +198,10 @@ def win_condition(game):
                 is_winner = True
         if is_winner:
             winners.append(p.user_id)
-        if (win_team != "succubi" and "entranced" in other) or (
-            win_team != "pipers" and "charmed" in other
+        if (
+            (win_team != "succubi" and "entranced" in other)
+            or (win_team != "pipers" and "charmed" in other)
+            or role == "hot potato"
         ):
             if p.user_id in winners:
                 winners.remove(p.user_id)
@@ -215,7 +225,7 @@ async def idle_watch(game):
                 extra = await game.kill(p, "idle")
                 await game.send_lobby(
                     f"*{p.name}* didn't get out of bed for a very long time and has "
-                    f"been found dead. The survivors bury the *{p.role}*.\n{extra}".rstrip()
+                    f"been found dead. The survivors bury the *{p.death_role}*.\n{extra}".rstrip()
                 )
                 await game.check_traitor()
                 await game.update_status()
@@ -253,8 +263,18 @@ async def game_loop(game):
         wolfchat = [p for p in game.players.values() if p.role in WOLFCHAT_ROLES]
         for p in game.players.values():
             msg = f"Your role is *{p.role}*.\n\n{p.description}"
-            if p.templates:
-                msg += f"\n\nTemplates: {', '.join(p.templates)}"
+            # being cursed is kept hidden
+            if templates := [t for t in p.templates if t != "cursed villager"]:
+                msg += f"\n\nTemplates: {', '.join(templates)}"
+            if p.role == "minion":
+                msg += "\n\nThe wolves are: " + ", ".join(
+                    f"{w.name} (#{w.id})"
+                    for w in game.players.values()
+                    if w.team == "wolf" and w.role not in ["minion", "cultist"]
+                )
+            if p.assassin_target:
+                target = game.get_player_by_user_id(p.assassin_target)
+                msg += f"\n\nIn your drunken stupor you have selected *{target.name}* as your target."
             if p in wolfchat and len(wolfchat) > 1:
                 msg += "\n\nYour team: " + ", ".join(
                     f"{w.name} ({w.role})" for w in wolfchat if w is not p
@@ -291,10 +311,9 @@ def has_night_action(game, p, is_night_zero):
         return False
     if p.role == "hunter" and "hunted" in p.other:
         return False
-    # the detective acts during the day
-    return any(
-        p.role in roles_ for cmd, roles_ in COMMANDS_FOR_ROLE.items() if cmd != "id"
-    )
+    if p.role == "turncoat" and "sided2" in p.other:
+        return False
+    return any(p.role in roles_ for roles_ in NIGHT_ACTIONS.values())
 
 
 async def night_phase(game, is_night_zero=False):
@@ -302,13 +321,28 @@ async def night_phase(game, is_night_zero=False):
     if not is_night_zero:
         game.night_num += 1
     game.night_start_time = datetime.now()
+    game.protected = set()
     await game.send_lobby("It is now *nighttime*.")
     await game.update_status()
     for p in game.players.values():
         p.target = ""
+        p.is_injured = False  # injuries and illness last a day
         p.remove_other("guarded")
+        for t in DELAYED_EFFECTS:
+            p.remove_other(f"{t}2")
+            if t in p.other:
+                p.remove_other(t)
+                p.add_other(f"{t}2")
         for t in SHAMAN_TOTEMS + WOLF_SHAMAN_TOTEMS:
             p.remove_other(t)
+        # a turncoat who switched sides must sit out the next night
+        if "sided2" in p.other:
+            p.remove_other("sided2")
+        elif "sided" in p.other:
+            p.remove_other("sided")
+            p.add_other("sided2")
+    if not is_night_zero:
+        await night_start_effects(game)
     for p in game.players_alive_list:
         if (
             p.role in ["shaman", "wolf shaman", "crazed shaman"]
@@ -328,6 +362,13 @@ async def night_phase(game, is_night_zero=False):
         for p in game.players.values()
         if has_night_action(game, p, is_night_zero)
     ]
+    for p in game.players_alive_list:
+        if "hexed" in p.other:
+            continue
+        if p.role == "doomsayer" and not is_night_zero:
+            tasks.append(asyncio.create_task(request_doom(game, p)))
+        if "assassin" in p.templates and not p.assassin_target:
+            tasks.append(asyncio.create_task(request_assassin_target(game, p)))
     try:
         if tasks:
             await asyncio.wait(tasks, timeout=game.night_timeout + 5)
@@ -342,7 +383,163 @@ async def night_phase(game, is_night_zero=False):
     await game.check_traitor()
 
 
+async def night_start_effects(game):
+    """Amnesia clearing, mystic senses and other news at the start of a night"""
+    for p in game.players_alive_list:
+        if p.role == "amnesiac" and game.night_num == 2 and p.hidden_role:
+            # the third night, counting night zero
+            p.role, p.team = p.hidden_role, roles[p.hidden_role][0]
+            p.description = roles[p.role][2]
+            p.add_other("amnesiac")
+            await game.send_pm(
+                p,
+                f"Your amnesia clears and you now remember that you are a *{p.role}*!\n\n{p.description}",
+            )
+            if p.role in WOLFCHAT_ROLES:
+                await game.wolfchat(f"{p.name} is now a *{p.role}*!")
+        if "hexed" in p.other:
+            continue
+        if p.role == "mystic":
+            wolves = sum(x.actual_team == "wolf" for x in game.players_alive_list)
+            await game.send_pm(p, f"You sense that there are *{wolves}* wolves.")
+        elif p.role == "wolf mystic":
+            powered = sum(
+                (x.actual_team == "village" and x.role != "villager")
+                or x.role in ["fool", "monster", "succubus", "piper", "serial killer"]
+                for x in game.players_alive_list
+            )
+            await game.send_pm(
+                p, f"You sense that there are *{powered}* villagers with powers."
+            )
+        elif p.role == "turncoat" and "sided2" not in p.other:
+            await game.send_pm(p, "You can switch sides tonight.")
+        elif p.role == "doomsayer":
+            p.doom = random.choice(["sick", "lycan", "death"])
+    game.wolf_kills = 1 + any(
+        "angry" in w.other
+        for w in game.players_alive_list
+        if w.role in COMMANDS_FOR_ROLE["kill"] and w.team == "wolf"
+    )
+    if game.wolf_kills > 1:
+        await game.wolfchat("You are enraged tonight: choose *two* players to kill.")
+
+
+def redirect(game, actor, target):
+    """Misdirection (on the actor) or luck (on the target) sends an action elsewhere"""
+    if "misdirection_totem2" in actor.other or "luck_totem2" in target.other:
+        others = [p for p in game.players_alive_list if p not in (actor, target)]
+        if others:
+            return random.choice(others)
+    return target
+
+
+def seen_as(seer, target):
+    """What target looks like to a seer; deceit on either side flips it"""
+    seen = target.display_role
+    if ("deceit_totem2" in seer.other) != ("deceit_totem2" in target.other):
+        seen = "villager" if seen == "wolf" else "wolf"
+    return seen
+
+
+def _label(p):
+    return f"{p.name} (#{p.id})"
+
+
+async def request_doom(game, player):
+    """The doomsayer picks who the night's bad luck befalls."""
+    options = {
+        p.user_id: _label(p)
+        for p in game.players_alive_list
+        if p is not player and p.role not in WOLFCHAT_ROLES
+    }
+    try:
+        choice = await choose(
+            player.jid,
+            "Choose who bad luck befalls tonight (doomsayer):",
+            options,
+            poll_user=player.user_id,
+            timeout=game.night_timeout,
+        )
+        if not (choice and player.is_alive and game.night):
+            return
+        target = redirect(game, player, game.get_player_by_user_id(choice))
+        doom = getattr(player, "doom", "lycan")
+        if doom == "lycan":
+            target.add_other("lycanthropy")
+            vision = "is transforming into a savage beast tomorrow night"
+        elif doom == "death":
+            player.doom_target = target.user_id
+            vision = "will meet an untimely end tonight"
+        else:
+            target.add_other("sick")
+            vision = "will become incredibly ill tomorrow and unable to do anything"
+        await game.send_pm(player, f"You have a vision that *{target.name}* {vision}.")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        await logger(Exception)
+
+
+async def request_assassin_target(game, player):
+    """The assassin picks who they'll take with them when they die."""
+    options = {p.user_id: _label(p) for p in game.players_alive_list if p is not player}
+    try:
+        choice = await choose(
+            player.jid,
+            "Choose your target (assassin). If you die, you take them with you:",
+            options,
+            poll_user=player.user_id,
+            timeout=game.night_timeout,
+        )
+        if choice and (target := game.get_player_by_user_id(choice)):
+            player.assassin_target = choice
+            await game.send_pm(player, f"Your target is *{target.name}*.")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        await logger(Exception)
+
+
+async def request_bless(game, player):
+    """The priest may bless someone, once a game, during the day."""
+    options = {p.user_id: _label(p) for p in game.players_alive_list if p is not player}
+    options["pass"] = "Not today"
+    try:
+        choice = await choose(
+            player.jid,
+            "Bless someone to keep them from being killed (priest, once a game):",
+            options,
+            poll_user=player.user_id,
+            timeout=game.day_timeout,
+        )
+        target = game.get_player_by_user_id(choice) if choice else None
+        if not (target and target.is_alive and player.is_alive and game.day):
+            return
+        if "bless_used" in player.other:
+            return
+        player.add_other("bless_used")
+        target.add_other("blessed")
+        await game.send_pm(player, f"You have given a blessing to *{target.name}*.")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        await logger(Exception)
+
+
 async def request_night_action(game, player, is_night_zero):
+    if player.role == "turncoat":
+        choice = await choose(
+            player.jid,
+            "Choose your side tonight (turncoat). You can switch every other night:",
+            {"villagers": "The villagers", "wolves": "The wolves", "pass": "Pass"},
+            poll_user=player.user_id,
+            timeout=game.night_timeout,
+        )
+        if choice:
+            player.target = choice
+            await game.send_pm(player, f"Action: {choice}.")
+        return
+    wolf_killer = player.team == "wolf" and player.role in COMMANDS_FOR_ROLE["kill"]
     options = {}
     if player.role == "matchmaker":
         for p in game.players.values():
@@ -359,6 +556,17 @@ async def request_night_action(game, player, is_night_zero):
         against = getattr(player, "vengeance_against", "wolf")
         for p in game.players_alive_list:
             if p.actual_team == against:
+                options[p.user_id] = [f"{p.name} (#{p.id})"]
+    elif player.role == "warlock":
+        for p in game.players_alive_list:
+            if (
+                p.team != "wolf" or p.role in ["minion", "cultist"]
+            ) and "cursed villager" not in p.templates:
+                options[p.user_id] = [f"{p.name} (#{p.id})"]
+    elif wolf_killer:
+        # killing a fellow wolf would be a waste
+        for p in game.players_alive_list:
+            if p.role not in WOLFCHAT_ROLES:
                 options[p.user_id] = [f"{p.name} (#{p.id})"]
     else:
         for p in game.players_alive_list:
@@ -383,6 +591,8 @@ async def request_night_action(game, player, is_night_zero):
         "guardian angel",
         "bodyguard",
         "piper",
+        "warlock",
+        "hot potato",
     ]:
         options["pass"] = ["Pass"]
     prompt = f"Choose target ({player.role}):"
@@ -390,8 +600,10 @@ async def request_night_action(game, player, is_night_zero):
         prompt = "Select 2 lovers, then Confirm:"
     elif player.role == "piper":
         prompt = "Select up to 2 to charm, then Confirm:"
+    elif wolf_killer and getattr(game, "wolf_kills", 1) > 1:
+        prompt = "You are enraged: select 2 to kill, then Confirm:"
     selectable, conf_btn = 1, None
-    if player.role in ["matchmaker", "piper"]:
+    if player.role in ["matchmaker", "piper"] or prompt.startswith("You are enraged"):
         # every vote change is a new poll update; wait for an explicit confirm
         conf_btn = "Confirm"
         options["confirm"] = [conf_btn]
@@ -432,6 +644,11 @@ async def request_night_action(game, player, is_night_zero):
         if player.role == "matchmaker" and len(response) != 2:
             return await game.send_pm(player, "You must select exactly 2 lovers.")
         response = response[:2]
+        if not is_night_zero:
+            response = [
+                redirect(game, player, game.get_player_by_user_id(uid)).user_id
+                for uid in response
+            ]
         player.target = ",".join(response)
         target_names = ", ".join(
             game.get_player_by_user_id(uid).name for uid in response
@@ -440,15 +657,19 @@ async def request_night_action(game, player, is_night_zero):
         if is_night_zero or not player.is_alive:
             return
         target = game.get_player_by_user_id(response[0])
-        if player.role == "seer":
+        if player.role == "warlock":
+            # the curse takes effect as soon as it's cast
+            target.templates.append("cursed villager")
+            await game.wolfchat(f"*{player.name}* has cast a curse on *{target.name}*.")
+        elif player.role == "seer":
             await game.send_pm(
                 player,
-                f"Your vision reveals that {target.name} is a *{target.display_role}*.",
+                f"Your vision reveals that {target.name} is a *{seen_as(player, target)}*.",
             )
         elif player.role == "oracle":
             await game.send_pm(
                 player,
-                f"Your vision reveals that {target.name} is {'a wolf' if target.actual_team == 'wolf' else 'not a wolf'}.",
+                f"Your vision reveals that {target.name} is {'a wolf' if seen_as(player, target) == 'wolf' else 'not a wolf'}.",
             )
         elif player.role == "augur":
             aura = (
@@ -505,7 +726,7 @@ async def process_night_zero(game):
 
 def _target(game, p):
     """Returns the player targeted by p, if any."""
-    if not p.target or p.target == "pass":
+    if not p.target or p.target in ("pass", "villagers", "wolves"):
         return None
     return game.get_player_by_user_id(p.target.split(",")[0])
 
@@ -537,6 +758,7 @@ async def process_night(game):
             protected_uids.append(target.user_id)
         if "protection_totem" in p.other:
             protected_uids.append(p.user_id)
+    game.protected = set(protected_uids)
     wolf_targets = {}
     wolves = [
         p
@@ -544,10 +766,14 @@ async def process_night(game):
         if p.team == "wolf" and p.role in COMMANDS_FOR_ROLE["kill"]
     ]
     for w in wolves:
-        if target := _target(game, w):
-            wolf_targets[target.user_id] = wolf_targets.get(target.user_id, 0) + 1
-    if wolf_targets:
-        target_uid = max(wolf_targets, key=wolf_targets.get)
+        for uid in w.target.split(",") if w.target and w.target != "pass" else []:
+            if (target := game.get_player_by_user_id(uid)) and target.is_alive:
+                wolf_targets[uid] = wolf_targets.get(uid, 0) + 1
+    # a dead wolf cub's rage is spent tonight
+    for p in game.players.values():
+        p.remove_other("angry")
+    chosen = sorted(wolf_targets, key=wolf_targets.get, reverse=True)
+    for target_uid in chosen[: getattr(game, "wolf_kills", 1)]:
         if target_uid in protected_uids:
             for p in game.players_alive_list:
                 if p.role == "bodyguard" and p.target == target_uid:
@@ -563,6 +789,10 @@ async def process_night(game):
                 killed.append(target.user_id)
         if "death_totem" in p.other:
             killed.append(p.user_id)
+        if p.role == "doomsayer" and (doomed := getattr(p, "doom_target", None)):
+            p.doom_target = None
+            if doomed not in protected_uids:
+                killed.append(doomed)
     for p in game.players_alive_list:
         if p.role == "harlot" and (target := _target(game, p)):
             if target.actual_team == "wolf" or target.user_id in killed:
@@ -582,16 +812,56 @@ async def process_night(game):
             and (target := _target(game, p))
         ):
             killed.append(target.user_id)
+    for p in game.players_alive_list:
+        if p.role == "turncoat" and p.target in ("villagers", "wolves"):
+            p.remove_other("side:villagers")
+            p.remove_other("side:wolves")
+            p.add_other(f"side:{p.target}")
+            p.add_other("sided")
     killed_msg = ""
     for uid in dict.fromkeys(killed):
         p = game.get_player_by_user_id(uid)
         if p and p.is_alive:
-            if p.role == "lycan" or "lycanthropy_totem" in p.other:
-                p.role, p.team = "wolf", "wolf"
-                await game.send_pm(p, "HOOOOOOOOOWL. You have become... a wolf!")
+            if p.is_blessed and killed.count(uid) < 2:
+                # a blessing wards off one attack
+                await game.send_pm(p, "You were attacked last night, but your blessing kept you safe.")
                 continue
-            killed_msg += f"The dead body of *{p.name}*, a *{p.role}*, was found.\n"
+            if (
+                p.role == "lycan"
+                or "lycanthropy_totem" in p.other
+                or "lycanthropy2" in p.other
+            ):
+                p.role, p.team = "wolf", "wolf"
+                p.description = roles["wolf"][2]
+                await game.send_pm(p, "HOOOOOOOOOWL. You have become... a wolf!")
+                await game.wolfchat(f"{p.name} is now a *wolf*!")
+                continue
+            killed_msg += f"The dead body of *{p.name}*, a *{p.death_role}*, was found.\n"
             killed_msg += await game.kill(p, "night")
+    # the hot potato swaps identities with their (living) choice
+    for potato in game.players_alive_list:
+        if potato.role != "hot potato" or not (target := _target(game, potato)):
+            continue
+        if not target.is_alive or target is potato:
+            continue
+        for attr in (
+            "role",
+            "team",
+            "description",
+            "templates",
+            "other",
+            "bullet_count",
+            "assassin_target",
+        ):
+            a, b = getattr(potato, attr), getattr(target, attr)
+            setattr(potato, attr, b)
+            setattr(target, attr, a)
+        await game.send_pm(
+            target, f"You are now a *hot potato*!\n\n{target.description}"
+        )
+        await game.send_pm(
+            potato, f"You are now a *{potato.role}*!\n\n{potato.description}"
+        )
     if not killed_msg:
         killed_msg = random.choice(lang["nokills"]) + "\n"
     await game.send_lobby(
@@ -603,8 +873,18 @@ async def day_phase(game):
     game.night, game.day, game.detective_acted = False, True, False
     game.day_num += 1
     game.day_start_time = datetime.now()
+    game.protected = set()
     for p in game.players.values():
         p.vote = ""
+        if "sick" in p.other:
+            # the doomsayer's illness: no vote today, no powers until tomorrow
+            p.remove_other("sick")
+            p.is_injured = True
+            p.add_other("hexed")
+            await game.send_pm(
+                p,
+                "You are staying home due to your illness and cannot vote or use any powers.",
+            )
     await game.send_lobby(
         f"It is now *daytime*. Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch"
         " (a #number, name, @mention, or reply to their message)."
@@ -615,7 +895,13 @@ async def day_phase(game):
     id_tasks = [
         asyncio.create_task(request_detective_id(game, p))
         for p in game.players_alive_list
-        if p.role == "detective"
+        if p.role == "detective" and "hexed" not in p.other
+    ] + [
+        asyncio.create_task(request_bless(game, p))
+        for p in game.players_alive_list
+        if p.role == "priest"
+        and "bless_used" not in p.other
+        and "hexed" not in p.other
     ]
     lynched_uid, warned = None, False
     try:
@@ -671,6 +957,12 @@ async def day_phase(game):
             "The village has agreed to not lynch anyone today."
         )
     p = game.get_player_by_user_id(lynched_uid)
+    if "revealing_totem" in p.other:
+        return await game.send_lobby(
+            f"As the villagers prepare to lynch *{p.name}*, their totem emits a brilliant "
+            f"flash of light! When the villagers can see again, they find that *{p.name}* "
+            f"has escaped, and the totem has taken the shape of a *{p.role}*."
+        )
     if "mayor" in p.templates and "revealed_mayor" not in p.other:
         p.add_other("revealed_mayor")
         return await game.send_lobby(
@@ -678,8 +970,18 @@ async def day_phase(game):
         )
     p.is_lynched = True
     p.add_other("lynched")
-    msg = random.choice(lang["lynched"]).format(p.name, p.role)
+    msg = random.choice(lang["lynched"]).format(p.name, p.death_role)
     extra = await game.kill(p, "lynch")
+    voters = [v for v in game.players_alive_list if v.vote == p.user_id]
+    if "desperation_totem" in p.other and voters and p.role != "fool":
+        # the last to vote for them pays for it
+        last = max(voters, key=lambda v: v.vote_at)
+        extra += (
+            f"As the noose is fitted, *{p.name}*'s totem emits a brilliant flash of light. "
+            f"When the villagers can see again, *{last.name}*, a *{last.death_role}*, "
+            "has fallen over dead.\n"
+        )
+        extra += await game.kill(last, "desperation")
     await game.send_lobby(f"{msg}\n{extra}" if extra else msg)
     for exe in game.players_alive_list:
         if exe.role == "executioner" and exe.execution_target == p.user_id:

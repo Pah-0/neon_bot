@@ -9,6 +9,7 @@ from bot.utils.log_utils import logger
 
 from .defaults import (
     ACTUAL_WOLVES,
+    AMNESIAC_EXCLUDED,
     DEFAULT_DAY_TIMEOUT,
     DEFAULT_DAY_WARNING,
     DEFAULT_NIGHT_TIMEOUT,
@@ -53,6 +54,7 @@ class Game:
 
         self.night_num = 0
         self.day_num = 0
+        self.protected = set()  # user_ids guarded or protected tonight
         self.task = None  # the running game_loop
         self.mode_votes = {}  # user_id: mode, from the lobby's mode poll or .vote
         self.mode_poll_id = None
@@ -174,6 +176,14 @@ class Game:
                 role, i + 1, user_id, player_name, self.player_jids.get(user_id)
             )
             self.players[user_id] = player
+            if role == "amnesiac":
+                player.hidden_role = random.choice(
+                    [
+                        r
+                        for r, data in roles.items()
+                        if data[0] != "template" and r not in AMNESIAC_EXCLUDED
+                    ]
+                )
 
         for template in self.template_pool:
             eligible_players = [
@@ -199,6 +209,11 @@ class Game:
                 elif template == "sharpshooter":
                     player.bullet_count = math.ceil(
                         self.total_players * SHARPSHOOTER_MULTIPLIER
+                    )
+                elif template == "assassin" and player.role == "village drunk":
+                    # too drunk to choose, the target is picked for them
+                    player.assassin_target = random.choice(
+                        [u for u in self.players if u != player.user_id]
                     )
                 break
 
@@ -232,13 +247,19 @@ class Game:
         return tally
 
     def vote_counts(self):
-        """tally_votes() as weights; impatience adds a vote, pacifism takes one"""
+        """
+        tally_votes() as weights; impatience and influence add a vote,
+        pacifism takes one
+        """
         counts = {}
         for vote, voters in self.tally_votes().items():
             weight = sum(
                 max(
                     0,
-                    1 + ("impatience_totem" in p.other) - ("pacifism_totem" in p.other),
+                    1
+                    + ("impatience_totem" in p.other)
+                    + ("influence_totem" in p.other)
+                    - ("pacifism_totem" in p.other),
                 )
                 for p in voters
             )
@@ -363,6 +384,53 @@ class Game:
         if not player.is_alive:
             return msg
         player.is_alive = False
+        # idling out has none of the effects a death by a player has
+        by_player = cause != "idle"
+        if player.role == "wolf cub" and by_player:
+            for wolf in self.players_alive_list:
+                if wolf.role in ACTUAL_WOLVES + ["traitor"]:
+                    wolf.add_other("angry")
+            await self.wolfchat(
+                "The wolf cub has died! You are enraged and will kill two players tomorrow night."
+            )
+        if player.role == "time lord" and by_player and self.day_timeout > 60:
+            self.day_warning, self.day_timeout = 45, 60
+            self.night_warning, self.night_timeout = 20, 30
+            msg += (
+                "The time lord has died. Night will now only last *30* seconds, "
+                "and day *60* seconds. Better be speedy!\n"
+            )
+        for p in self.players_alive_list:
+            if p.assassin_target == player.user_id:
+                p.assassin_target = None  # they may choose another target
+                if p.role == "village drunk":
+                    p.assassin_target = random.choice(
+                        [x.user_id for x in self.players_alive_list if x is not p]
+                    )
+        if (
+            "assassin" in player.templates
+            and by_player
+            and (target := self.get_player_by_user_id(player.assassin_target))
+            and target.is_alive
+        ):
+            if self.is_safe(target):
+                msg += f"Before dying, *{player.name}* tries to slit *{target.name}*'s throat, but fails.\n"
+            else:
+                msg += (
+                    f"Before dying, *{player.name}* quickly slits *{target.name}*'s throat. "
+                    f"The village mourns the loss of a *{target.death_role}*.\n"
+                )
+                msg += await self.kill(target, "assassination")
+        if player.role == "mad scientist" and by_player:
+            for target in self.mad_scientist_targets(player):
+                if self.is_safe(target):
+                    msg += f"*{player.name}*'s chemical misses *{target.name}*.\n"
+                    continue
+                msg += (
+                    f"*{player.name}* throws a potent chemical into the crowd. "
+                    f"*{target.name}*, a *{target.death_role}*, is hit and dies.\n"
+                )
+                msg += await self.kill(target, "mad scientist")
         if player.role == "vengeful ghost":
             # the ghost haunts the team that killed it
             player.vengeance_against = "village" if cause == "lynch" else "wolf"
@@ -380,6 +448,31 @@ class Game:
                 )
                 msg += await self.kill(lover, "suicide")
         return msg
+
+    def is_safe(self, player):
+        """Whether player escapes an assassin or mad scientist"""
+        return (
+            player.is_blessed
+            or "protection_totem" in player.other
+            or player.user_id in self.protected
+        )
+
+    def mad_scientist_targets(self, scientist):
+        """
+        The players beside the mad scientist in #id order, if alive; past the
+        dead to the nearest living ones in big, random or rapidfire games
+        """
+        order = sorted(self.players.values(), key=lambda p: p.id)
+        skip_dead = len(order) > 15 or self.mode in ["random", "rapidfire"]
+        i = order.index(scientist)
+        targets = []
+        for step in (-1, 1):
+            j = (i + step) % len(order)
+            while skip_dead and not order[j].is_alive and order[j] is not scientist:
+                j = (j + step) % len(order)
+            if order[j].is_alive and order[j] not in targets:
+                targets.append(order[j])
+        return targets
 
     def close(self):
         """Removes the game from the running games."""
@@ -451,6 +544,18 @@ class Game:
 
     async def check_traitor(self):
         wolves = [p for p in self.players_alive_list if p.role in ACTUAL_WOLVES]
+        if wolves and all(p.role == "wolf cub" for p in wolves):
+            # orphaned cubs grow up to avenge their parents
+            for cub in wolves:
+                cub.role = "wolf"
+                await self.send_pm(
+                    cub,
+                    "You have grown up into a wolf and vowed to take revenge for your dead parents!",
+                )
+            await self.send_lobby(
+                "*The villagers listen horrified as they hear growling deepen in pitch. "
+                "The wolf will do whatever it takes to avenge their parents!*"
+            )
         if not wolves:
             traitors = [p for p in self.players_alive_list if p.role == "traitor"]
             for t in traitors:
