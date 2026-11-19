@@ -18,6 +18,7 @@ from bot.utils.msg_utils import (
     user_is_privileged,
 )
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
+from bot.workers.handlers.manage import target_user
 
 # A WhatsApp poll takes at most 12 options, as many as a showcase holds
 MAX_CHOICES = 12
@@ -266,6 +267,18 @@ async def game_profile(event, args, game: str):
     words = rest.split()
     if words and words[0].isdigit() and len(words[0]) in info["uid_lengths"]:
         uid, words = words[0], words[1:]
+    elif (words and words[0][0] in "@+") or event.reply_to_message:
+        # Someone else's saved UID: @mention, +number, or a reply to them
+        lid, number, rest = await target_user(event, " ".join(words))
+        words = rest.split()
+        if not (lid or number):
+            return await event.reply("*Mention them, or reply to their message.*")
+        saved = bot.user_dict.get(lid, {}) or bot.user_dict.get(number, {})
+        if not (uid := saved.get(f"{game}_uid")):
+            return await event.reply(
+                f"*They haven't saved a {info['name']} UID* "
+                f"(with {conf.CMD_PREFIX}{game} -set <uid>)."
+            )
     else:
         uid = bot.user_dict.get(event.from_user.hid, {}).get(f"{game}_uid")
     if not uid:
@@ -344,6 +357,7 @@ async def gi_profile(event, args, client):
 
     Usage: gi [uid] [character] [-c] [-2x] [-hide]
         uid: a Genshin UID; leave it out to use the one you saved
+            (or @mention someone, or reply to them, to use the UID they saved)
         character: a showcase number or name, to go straight to its build card
             (or tap a character's button under the profile card)
         -c : pick characters for build cards from a poll; tick as many as you
@@ -367,6 +381,7 @@ async def hsr_profile(event, args, client):
 
     Usage: hsr [uid] [character] [-c] [-2x] [-hide]
         uid: a Star Rail UID; leave it out to use the one you saved
+            (or @mention someone, or reply to them, to use the UID they saved)
         character: a showcase number or name, to go straight to its build card
             (or tap a character's button under the profile card)
         -c : pick characters for build cards from a poll; tick as many as you
@@ -391,6 +406,7 @@ async def zzz_profile(event, args, client):
 
     Usage: zzz [uid] [agent] [-c] [-2x] [-hide]
         uid: a ZZZ UID; leave it out to use the one you saved
+            (or @mention someone, or reply to them, to use the UID they saved)
         agent: a showcase number or name, to go straight to its build card
             (or tap an agent's button under the profile card)
         -c : pick agents for build cards from a poll; tick as many as you
