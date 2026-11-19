@@ -35,7 +35,8 @@ async def werewolf_handler(event, args, client):
         --start : start the lobby now (needs the mode's minimum players)
         --mode <mode> : set the lobby's mode, creating a lobby if none exists (default: chosen by chance)
         --mode all : list available modes
-        -r : restricted mode; while the game runs, messages from dead players and non-players are deleted
+        -r : restricted mode; while the game runs, messages from non-players are deleted too
+            (dead players' messages are always deleted)
             (can be combined with -j, --start or --mode, or used alone on an existing lobby)
 
     In-game commands (alive players only):
@@ -391,12 +392,13 @@ async def werewolf_restriction_handler(client, event):
         return
     current_games = bot.current_games_dict.get("werewolf", {})
     game = current_games.get(event.chat.id)
-    if not game or isinstance(game, dict) or game.waiting or not game.restricted:
+    if not game or isinstance(game, dict) or game.waiting:
         return
     if game.ended or not game.players:
         return
     player = game.get_player_by_user_id(event.from_user.id)
-    if not player or not player.is_alive:
+    # the dead don't talk; restricted games also silence non-players
+    if (player and not player.is_alive) or (not player and game.restricted):
         try:
             await event.delete()
         except Exception:
@@ -412,7 +414,8 @@ async def were_info(event, args, client):
     msg += f"To start now: `{conf.CMD_PREFIX}werewolf --start`\n"
     msg += f"To set mode: `{conf.CMD_PREFIX}werewolf --mode <mode>`\n"
     msg += f"To see modes: `{conf.CMD_PREFIX}werewolf --mode all`\n"
-    msg += "Restricted mode (deletes messages from dead/non-players): add `-r` to `-j`, `--start` or `--mode`\n"
+    msg += "Dead players' messages are deleted while a game runs (I need to be an admin).\n"
+    msg += "Restricted mode (also deletes messages from non-players): add `-r` to `-j`, `--start` or `--mode`\n"
     msg += "Lobbies auto-start after 3 minutes without joins/leaves.\n\n"
     msg += "*In-game (during the day):*\n"
     msg += f"Vote to lynch: `{conf.CMD_PREFIX}lynch <player>`\n"
