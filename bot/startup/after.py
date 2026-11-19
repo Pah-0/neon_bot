@@ -6,6 +6,7 @@ import aiohttp
 from bot import LOGS, Message, asyncio, bot, conf, jid, sys
 from bot.fun.emojis import enmoji, enmoji2
 from bot.fun.quips import enquip, enquip2
+from bot.games.werewolf.lock import unlock_stale_groups
 from bot.utils.db_utils import backup_wa_db
 from bot.utils.log_utils import logger
 from bot.utils.msg_rank import scheduler2
@@ -183,6 +184,8 @@ async def on_startup():
         await report_pr_result()
         asyncio.create_task(update_presence())
         asyncio.create_task(backup_database())
+        # groups a werewolf game had locked when the bot stopped
+        asyncio.create_task(unlock_stale_groups())
         asyncio.create_task(auto_save_msg())
         asyncio.create_task(auto_clean_msg())
         LOGS.info("Bot has started.")

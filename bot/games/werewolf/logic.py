@@ -33,6 +33,7 @@ from .defaults import (
     WOLFCHAT_ROLES,
     lang,
 )
+from .lock import lock_group, unlock_group
 from .roles import roles
 
 NIGHT_ACTIONS = {
@@ -259,6 +260,17 @@ async def idle_watch(game):
 async def game_loop(game):
     idle_task = asyncio.create_task(idle_watch(game))
     try:
+        if game.restricted:
+            if await lock_group(game):
+                await game.send_lobby(
+                    "🔒 *Restricted game:* only living players can talk until it ends."
+                )
+            else:
+                await game.send_lobby(
+                    "I'm not an admin here, so I can't lock the group; "
+                    "I'll delete messages from dead players and non-players instead "
+                    "(make me an admin for that too)."
+                )
         await game.send_lobby(
             f"Welcome to Werewolf! Using the *{game.mode}* game mode with *{game.total_players}* players."
         )
@@ -292,6 +304,8 @@ async def game_loop(game):
         game.ended = True
         game.close()
         await game.unpin_status()
+        if game.restricted:
+            await unlock_group(game.chat_id)
 
 
 def has_night_action(game, p, is_night_zero):

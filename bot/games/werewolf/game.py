@@ -20,6 +20,7 @@ from .defaults import (
     SHARPSHOOTER_MULTIPLIER,
     WOLFCHAT_ROLES,
 )
+from .lock import demote_dead
 from .player import Player
 from .roles import gamemodes, roles
 
@@ -428,6 +429,8 @@ class Game:
         if not player.is_alive:
             return msg
         player.is_alive = False
+        if self.restricted:
+            await demote_dead(self, player)
         # idling out has none of the effects a death by a player has
         by_player = cause != "idle"
         if player.role == "wolf cub" and by_player:

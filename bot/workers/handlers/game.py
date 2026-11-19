@@ -35,8 +35,10 @@ async def werewolf_handler(event, args, client):
         --start : start the lobby now (needs the mode's minimum players)
         --mode <mode> : set the lobby's mode, creating a lobby if none exists (default: chosen by chance)
         --mode all : list available modes
-        -r : restricted mode; while the game runs, messages from non-players are deleted too
-            (dead players' messages are always deleted)
+        -r : restricted mode: while the game runs, only living players can talk; the group
+            goes admins-only and living players who aren't admins are made admins until they
+            die or the game ends (needs the bot to be an admin). Messages from dead or
+            non-playing real admins are deleted. (Dead players' messages are always deleted.)
             (can be combined with -j, --start or --mode, or used alone on an existing lobby)
 
     In-game commands (alive players only):
@@ -415,7 +417,7 @@ async def were_info(event, args, client):
     msg += f"To set mode: `{conf.CMD_PREFIX}werewolf --mode <mode>`\n"
     msg += f"To see modes: `{conf.CMD_PREFIX}werewolf --mode all`\n"
     msg += "Dead players' messages are deleted while a game runs (I need to be an admin).\n"
-    msg += "Restricted mode (also deletes messages from non-players): add `-r` to `-j`, `--start` or `--mode`\n"
+    msg += "Restricted mode (only living players can talk: the group goes admins-only and they're made admins until they die): add `-r` to `-j`, `--start` or `--mode`\n"
     msg += "Lobbies auto-start after 3 minutes without joins/leaves.\n\n"
     msg += "*In-game (during the day):*\n"
     msg += f"Vote to lynch: `{conf.CMD_PREFIX}lynch <player>`\n"
