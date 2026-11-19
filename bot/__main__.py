@@ -245,6 +245,31 @@ async def _(client: NewAClient, message: Event):
     await event_handler(message, werewolf_handler, client)
 
 
+@bot.register("vote")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
+@bot.register("votes")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
+@bot.register("retract")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
+@bot.register("abstain")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
+@bot.register("fstop")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
 @bot.register("cmds")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, getcmds)

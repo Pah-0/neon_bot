@@ -3,10 +3,13 @@ import math
 import random
 from datetime import datetime
 
+from bot import Message
 from bot.config import bot
+from bot.utils.log_utils import logger
 
 from .defaults import (
     ACTUAL_WOLVES,
+    AMNESIAC_EXCLUDED,
     DEFAULT_DAY_TIMEOUT,
     DEFAULT_DAY_WARNING,
     DEFAULT_NIGHT_TIMEOUT,
@@ -50,6 +53,14 @@ class Game:
         self.day_start_time = None
 
         self.night_num = 0
+        self.day_num = 0
+        self.protected = set()  # user_ids guarded or protected tonight
+        self.task = None  # the running game_loop
+        self.mode_votes = {}  # user_id: mode, from the lobby's mode poll or .vote
+        self.mode_poll_id = None
+        self.last_seen = {}  # user_id: when they last sent anything, for idle kicks
+        self.idle_warned = set()  # user_ids
+        self.status_msg_id = None  # the pinned in-game status message
         self.detective_acted = False
 
         self.day_warning = DEFAULT_DAY_WARNING
@@ -57,17 +68,42 @@ class Game:
         self.night_warning = DEFAULT_NIGHT_WARNING
         self.night_timeout = DEFAULT_NIGHT_TIMEOUT
 
+    def mode_fits(self, mode):
+        data = gamemodes.get(mode, {})
+        return bool(data.get("roles")) and (
+            data.get("min_players", MIN_PLAYERS)
+            <= self.total_players
+            <= data.get("max_players", MAX_PLAYERS)
+        )
+
+    @property
+    def votable_modes(self):
+        """The modes picked by chance, which players can vote for"""
+        return [m for m, data in gamemodes.items() if data.get("chance", 0) > 0]
+
     def select_mode_by_chance(self):
+        """
+        The requested mode, else one a majority of players voted for, else one
+        picked by chance, each mode's chance raised by its share of the votes
+        """
         if self.requested_mode:
             return self.requested_mode
+        votes = {}
+        for uid, mode in self.mode_votes.items():
+            if uid in self.player_ids:
+                votes[mode] = votes.get(mode, 0) + 1
+        for mode, count in votes.items():
+            if count >= self.total_players // 2 + 1 and self.mode_fits(mode):
+                return mode
         available_modes = []
         chances = []
-        for m, data in gamemodes.items():
-            if data.get("chance", 0) > 0 and self.total_players >= data.get(
-                "min_players", MIN_PLAYERS
-            ):
+        for m in self.votable_modes:
+            if self.mode_fits(m):
                 available_modes.append(m)
-                chances.append(data["chance"])
+                chances.append(
+                    gamemodes[m]["chance"]
+                    + int(votes.get(m, 0) / self.total_players * 200)
+                )
         if not available_modes:
             return "default"
         return random.choices(available_modes, weights=chances, k=1)[0]
@@ -140,6 +176,14 @@ class Game:
                 role, i + 1, user_id, player_name, self.player_jids.get(user_id)
             )
             self.players[user_id] = player
+            if role == "amnesiac":
+                player.hidden_role = random.choice(
+                    [
+                        r
+                        for r, data in roles.items()
+                        if data[0] != "template" and r not in AMNESIAC_EXCLUDED
+                    ]
+                )
 
         for template in self.template_pool:
             eligible_players = [
@@ -166,14 +210,159 @@ class Game:
                     player.bullet_count = math.ceil(
                         self.total_players * SHARPSHOOTER_MULTIPLIER
                     )
+                elif template == "assassin" and player.role == "village drunk":
+                    # too drunk to choose, the target is picked for them
+                    player.assassin_target = random.choice(
+                        [u for u in self.players if u != player.user_id]
+                    )
                 break
 
         self.in_progress = True
         self.waiting = False
         self.start_time = datetime.now()
+        self.last_seen = dict.fromkeys(self.players, self.start_time)
 
-    async def send_lobby(self, message):
-        await bot.client.send_message(self.chat_jid, message)
+    async def send_lobby(self, message, mentions=False):
+        """Sends message to the group; mentions makes its @<user_id>s tags."""
+        await bot.client.send_message(
+            self.chat_jid, message, mentions_are_lids=mentions
+        )
+
+    @property
+    def able_voters(self):
+        """Living players who can vote; the injured can't"""
+        return [p for p in self.players_alive_list if not p.is_injured]
+
+    @property
+    def votes_to_lynch(self):
+        return len(self.able_voters) // 2 + 1
+
+    def tally_votes(self):
+        """{user_id voted for, or "abstain": [voters]} of today's valid votes"""
+        tally = {}
+        for p in self.able_voters:
+            target = self.get_player_by_user_id(p.vote)
+            if p.vote == "abstain" or (target and target.is_alive):
+                tally.setdefault(p.vote, []).append(p)
+        return tally
+
+    def vote_counts(self):
+        """
+        tally_votes() as weights; impatience and influence add a vote,
+        pacifism takes one
+        """
+        counts = {}
+        for vote, voters in self.tally_votes().items():
+            weight = sum(
+                max(
+                    0,
+                    1
+                    + ("impatience_totem" in p.other)
+                    + ("influence_totem" in p.other)
+                    - ("pacifism_totem" in p.other),
+                )
+                for p in voters
+            )
+            if weight:
+                counts[vote] = weight
+        return counts
+
+    def votes_text(self):
+        able = self.able_voters
+        tally = self.tally_votes()
+        abstainers = tally.pop("abstain", [])
+        msg = (
+            f"*{self.players_alive_count}* living players, "
+            f"*{self.votes_to_lynch}* votes needed to lynch, "
+            f"*{len(able)}* can vote, *{len(abstainers)}* abstained.\n"
+        )
+        if not tally:
+            return msg + "No one has voted to lynch yet."
+        msg += "*Current votes:*\n"
+        for uid, voters in sorted(tally.items(), key=lambda kv: -len(kv[1])):
+            target = self.get_player_by_user_id(uid)
+            names = ", ".join(v.name for v in voters)
+            msg += f"- {target.name} (#{target.id}): {len(voters)} ({names})\n"
+        if abstainers:
+            msg += f"- Abstain: {
+                len(abstainers)} ({
+                ', '.join(
+                    p.name for p in abstainers)})\n"
+        return msg.rstrip()
+
+    def mode_votes_text(self):
+        votes = {}
+        for uid, mode in self.mode_votes.items():
+            if uid in self.player_ids:
+                votes.setdefault(mode, []).append(self.player_names.get(uid, "?"))
+        msg = (
+            f"*{self.total_players}* players in the lobby, "
+            f"*{self.total_players // 2 + 1}* votes choose a mode outright; "
+            "fewer only make it likelier.\n"
+        )
+        if self.requested_mode:
+            msg += f"The mode is set to *{
+                self.requested_mode}*, so votes don't count.\n"
+        if not votes:
+            return msg + "No one has voted for a mode yet."
+        for mode, names in sorted(votes.items(), key=lambda kv: -len(kv[1])):
+            unfit = "" if self.mode_fits(mode) else " - wrong player count for it"
+            msg += f"- {mode}: {len(names)} ({', '.join(names)}){unfit}\n"
+        return msg.rstrip()
+
+    def note_activity(self, user_id):
+        """Marks a player as active, clearing an idle warning."""
+        if user_id in self.last_seen:
+            self.last_seen[user_id] = datetime.now()
+            self.idle_warned.discard(user_id)
+
+    def stop(self):
+        """Ends the lobby or game at once."""
+        self.ended = True
+        self.activity.set()  # lets the lobby manager finish
+        if self.task:
+            self.task.cancel()  # game_loop closes the game when cancelled
+        else:
+            self.close()
+
+    def status_text(self):
+        phase = "Day" if self.day else "Night" if self.night else "Starting"
+        msg = f"*Werewolf Game Status ({self.mode})*\n"
+        msg += f"Players alive: {self.players_alive_count}/{len(self.players)}\n"
+        msg += f"Phase: {phase}\n"
+        msg += f"Restricted: {self.restricted}\n"
+        msg += "*Players:*\n"
+        for p in self.players.values():
+            status = "💀" if not p.is_alive else "🟢"
+            msg += f"{status} {p.name} (#{p.id})\n"
+        return msg.rstrip()
+
+    async def update_status(self):
+        """Posts and pins the status message, or edits it once posted."""
+        try:
+            if self.status_msg_id:
+                return await bot.client.edit_message(
+                    self.chat_jid,
+                    self.status_msg_id,
+                    Message(conversation=self.status_text()),
+                )
+            resp = await bot.client.send_message(self.chat_jid, self.status_text())
+            self.status_msg_id = resp.ID
+            await bot.client.pin_message(
+                self.chat_jid, bot.client.me.JID, resp.ID, 86400
+            )
+        except Exception:
+            await logger(Exception)
+
+    async def unpin_status(self):
+        if not self.status_msg_id:
+            return
+        try:
+            await bot.client.pin_message(
+                self.chat_jid, bot.client.me.JID, self.status_msg_id, 1
+            )
+        except Exception:
+            await logger(Exception)
 
     async def send_pm(self, player, message):
         try:
@@ -195,6 +384,55 @@ class Game:
         if not player.is_alive:
             return msg
         player.is_alive = False
+        # idling out has none of the effects a death by a player has
+        by_player = cause != "idle"
+        if player.role == "wolf cub" and by_player:
+            for wolf in self.players_alive_list:
+                if wolf.role in ACTUAL_WOLVES + ["traitor"]:
+                    wolf.add_other("angry")
+            await self.wolfchat(
+                "The wolf cub has died! You are enraged and will kill two players tomorrow night."
+            )
+        if player.role == "time lord" and by_player and self.day_timeout > 60:
+            self.day_warning, self.day_timeout = 45, 60
+            self.night_warning, self.night_timeout = 20, 30
+            msg += (
+                "The time lord has died. Night will now only last *30* seconds, "
+                "and day *60* seconds. Better be speedy!\n"
+            )
+        for p in self.players_alive_list:
+            if p.assassin_target == player.user_id:
+                p.assassin_target = None  # they may choose another target
+                if p.role == "village drunk":
+                    p.assassin_target = random.choice(
+                        [x.user_id for x in self.players_alive_list if x is not p]
+                    )
+        if (
+            "assassin" in player.templates
+            and by_player
+            and (target := self.get_player_by_user_id(player.assassin_target))
+            and target.is_alive
+        ):
+            if self.is_safe(target):
+                msg += f"Before dying, *{
+                    player.name}* tries to slit *{
+                    target.name}*'s throat, but fails.\n"
+            else:
+                msg += (
+                    f"Before dying, *{player.name}* quickly slits *{target.name}*'s throat. "
+                    f"The village mourns the loss of a *{target.death_role}*.\n"
+                )
+                msg += await self.kill(target, "assassination")
+        if player.role == "mad scientist" and by_player:
+            for target in self.mad_scientist_targets(player):
+                if self.is_safe(target):
+                    msg += f"*{player.name}*'s chemical misses *{target.name}*.\n"
+                    continue
+                msg += (
+                    f"*{player.name}* throws a potent chemical into the crowd. "
+                    f"*{target.name}*, a *{target.death_role}*, is hit and dies.\n"
+                )
+                msg += await self.kill(target, "mad scientist")
         if player.role == "vengeful ghost":
             # the ghost haunts the team that killed it
             player.vengeance_against = "village" if cause == "lynch" else "wolf"
@@ -212,6 +450,31 @@ class Game:
                 )
                 msg += await self.kill(lover, "suicide")
         return msg
+
+    def is_safe(self, player):
+        """Whether player escapes an assassin or mad scientist"""
+        return (
+            player.is_blessed
+            or "protection_totem" in player.other
+            or player.user_id in self.protected
+        )
+
+    def mad_scientist_targets(self, scientist):
+        """
+        The players beside the mad scientist in #id order, if alive; past the
+        dead to the nearest living ones in big, random or rapidfire games
+        """
+        order = sorted(self.players.values(), key=lambda p: p.id)
+        skip_dead = len(order) > 15 or self.mode in ["random", "rapidfire"]
+        i = order.index(scientist)
+        targets = []
+        for step in (-1, 1):
+            j = (i + step) % len(order)
+            while skip_dead and not order[j].is_alive and order[j] is not scientist:
+                j = (j + step) % len(order)
+            if order[j].is_alive and order[j] not in targets:
+                targets.append(order[j])
+        return targets
 
     def close(self):
         """Removes the game from the running games."""
@@ -249,6 +512,7 @@ class Game:
         if event.from_user.id not in self.player_ids:
             return await event.reply("You've not joined the game!")
         self.player_ids.remove(event.from_user.id)
+        self.mode_votes.pop(event.from_user.id, None)
         self.player_names.pop(event.from_user.id, None)
         self.player_jids.pop(event.from_user.id, None)
         self.activity.set()
@@ -269,7 +533,8 @@ class Game:
     async def status(self, event):
         if self.waiting:
             msg = f"*Werewolf Game Lobby*\n"
-            msg += f"Mode: {self.requested_mode or 'Auto (by chance)'}\n"
+            msg += f"Mode: {
+                self.requested_mode or 'Auto (by chance and votes)'}\n"
             msg += f"Players: {self.total_players}\n"
             msg += "*Joined players:*\n"
             for p_id in self.player_ids:
@@ -277,18 +542,22 @@ class Game:
                 msg += f"- {name}\n"
             await event.reply(msg)
         else:
-            msg = f"*Werewolf Game Status ({self.mode})*\n"
-            msg += f"Players alive: {self.players_alive_count}/{len(self.players)}\n"
-            msg += f"Phase: {'Day' if self.day else 'Night'}\n"
-            msg += f"Restricted: {self.restricted}\n"
-            msg += "*Players:*\n"
-            for p in self.players.values():
-                status = "💀" if not p.is_alive else "🟢"
-                msg += f"{status} {p.name} (#{p.id})\n"
-            await event.reply(msg)
+            await event.reply(self.status_text())
 
     async def check_traitor(self):
         wolves = [p for p in self.players_alive_list if p.role in ACTUAL_WOLVES]
+        if wolves and all(p.role == "wolf cub" for p in wolves):
+            # orphaned cubs grow up to avenge their parents
+            for cub in wolves:
+                cub.role = "wolf"
+                await self.send_pm(
+                    cub,
+                    "You have grown up into a wolf and vowed to take revenge for your dead parents!",
+                )
+            await self.send_lobby(
+                "*The villagers listen horrified as they hear growling deepen in pitch. "
+                "The wolf will do whatever it takes to avenge their parents!*"
+            )
         if not wolves:
             traitors = [p for p in self.players_alive_list if p.role == "traitor"]
             for t in traitors:

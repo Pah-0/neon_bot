@@ -6,8 +6,8 @@ RETRY_RUN_GAME = 3
 PLAYER_TIMEOUT = 300
 PLAYER_TIMEOUT2 = 60
 
-DEFAULT_DAY_WARNING = 540
-DEFAULT_DAY_TIMEOUT = 600
+DEFAULT_DAY_WARNING = 240
+DEFAULT_DAY_TIMEOUT = 300
 DEFAULT_NIGHT_WARNING = 90
 DEFAULT_NIGHT_TIMEOUT = 120
 
@@ -37,22 +37,56 @@ GUNNER_REVENGE_WOLF = 0.25  # chance that gunner will kill wolf
 
 DETECTIVE_REVEAL_CHANCE = 0.4
 
+# Wolves that kill (the wolf cub only becomes one by growing up)
 ACTUAL_WOLVES = [
     "wolf",
     "werecrow",
+    "doomsayer",
     "wolf cub",
     "werekitten",
     "wolf shaman",
-    "doomsayer",
-    "hag",
-    "warlock",
     "wolf mystic",
 ]
 
-WOLFCHAT_ROLES = ACTUAL_WOLVES + ["traitor", "sorcerer", "minion"]
+WOLFCHAT_ROLES = ACTUAL_WOLVES + ["traitor", "sorcerer", "warlock", "hag"]
 
+# What the seer sees these roles as (anything else is seen as itself)
+ROLES_SEEN_VILLAGER = [
+    "werekitten",
+    "traitor",
+    "sorcerer",
+    "warlock",
+    "minion",
+    "cultist",
+    "villager",
+    "jester",
+    "fool",
+    "amnesiac",
+    "vengeful ghost",
+    "hag",
+    "piper",
+    "clone",
+    "lycan",
+    "time lord",
+    "turncoat",
+    "executioner",
+]
+ROLES_SEEN_WOLF = [
+    "wolf",
+    "werecrow",
+    "doomsayer",
+    "wolf cub",
+    "wolf shaman",
+    "wolf mystic",
+    "monster",
+    "succubus",
+    "mad scientist",
+]
+
+# Night actions, but for id and bless, which are used during the day
 COMMANDS_FOR_ROLE = {
-    "kill": ACTUAL_WOLVES + ["serial killer", "hunter", "vengeful ghost"],
+    "kill": [w for w in ACTUAL_WOLVES if w != "wolf cub"]
+    + ["serial killer", "hunter", "vengeful ghost"],
     "see": ["seer", "oracle", "augur", "doomsayer"],
     "give": ["shaman", "wolf shaman", "crazed shaman"],
     "visit": ["harlot", "succubus"],
@@ -60,7 +94,25 @@ COMMANDS_FOR_ROLE = {
     "observe": ["werecrow", "sorcerer"],
     "id": ["detective"],
     "charm": ["piper"],
+    "hex": ["hag"],
+    "curse": ["warlock"],
+    "choose": ["hot potato"],
+    "side": ["turncoat"],
+    "bless": ["priest"],
 }
+DAY_COMMANDS = ["id", "bless"]
+
+# Roles the amnesiac can remember being
+AMNESIAC_EXCLUDED = [
+    "minion",
+    "matchmaker",
+    "villager",
+    "cultist",
+    "amnesiac",
+    "clone",
+    "monster",
+    "piper",
+]
 
 lang = {
     "nokills": [
@@ -83,18 +135,23 @@ lang = {
 }
 
 SHAMAN_TOTEMS = [
-    "protection_totem",
     "death_totem",
+    "protection_totem",
     "revealing_totem",
     "influence_totem",
     "impatience_totem",
     "pacifism_totem",
+    "silence_totem",
     "desperation_totem",
 ]
 
 WOLF_SHAMAN_TOTEMS = [
     "protection_totem",
-    "misdirection_totem",
+    "impatience_totem",
+    "pacifism_totem",
     "deceit_totem",
     "lycanthropy_totem",
+    "luck_totem",
+    "misdirection_totem",
+    "silence_totem",
 ]
