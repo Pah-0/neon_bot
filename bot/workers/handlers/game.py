@@ -2,6 +2,7 @@ import asyncio
 import re
 import time
 import uuid
+from datetime import datetime
 
 from bot import sudo_btn_lock
 from bot.config import bot, conf
@@ -48,7 +49,8 @@ async def werewolf_handler(event, args, client):
         votes : show today's lynch votes (in a lobby: the mode votes)
         retract : take back your lynch vote (in a lobby: your mode vote)
         abstain : vote to lynch no one today (not on the first day, nor in evilvillage)
-    A majority of the players able to vote lynches at once; when the day runs out,
+    Each day starts with 1-3 minutes of discussion (10s a living player) before
+    voting opens. A majority of the players able to vote lynches at once; when the day runs out,
     the most votes win, and no one is lynched on a tie.
     Players who send nothing for 5 minutes are warned, then killed a minute later.
 
@@ -259,6 +261,11 @@ async def handle_game_command(game, event, cmd_type):
     if voting:
         if not game.day:
             return await event.reply("You can only vote during the day!")
+        if not game.voting_open:
+            wait = (game.voting_opens_at - datetime.now()).total_seconds()
+            return await event.reply(
+                f"Voting opens in *{max(1, int(wait))}s*; discuss who to lynch first."
+            )
         if player.is_injured:
             return await event.reply("You are injured and unable to vote.")
 
@@ -418,6 +425,7 @@ async def were_info(event, args, client):
         conf.CMD_PREFIX}retract`\n"
     msg += f"Lynch no one: `{conf.CMD_PREFIX}abstain` (not on the first day)\n"
     msg += "A player is their #number, name, @mention, or reply to their message.\n"
+    msg += "Each day starts with 1-3 minutes of discussion before voting opens.\n"
     msg += "A majority lynches at once; when the day ends, the most votes win (none on a tie).\n"
     msg += (
         "Players silent for 5 minutes are warned, then found dead a minute later.\n\n"

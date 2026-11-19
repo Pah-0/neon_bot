@@ -1,6 +1,6 @@
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from bot import sudo_btn_lock
 from bot.config import conf
@@ -507,7 +507,7 @@ async def request_bless(game, player):
             "Bless someone to keep them from being killed (priest, once a game):",
             options,
             poll_user=player.user_id,
-            timeout=game.day_timeout,
+            timeout=game.discussion + game.day_timeout,
         )
         target = game.get_player_by_user_id(choice) if choice else None
         if not (target and target.is_alive and player.is_alive and game.day):
@@ -1046,9 +1046,26 @@ async def gunner_revenge(game, victims, wolves):
     return msg
 
 
+def discussion_seconds(game):
+    """How long the village talks before voting: 10s a living player, 1-3 min"""
+    if game.day_timeout <= 60:  # the dead time lord's hurry leaves no time to talk
+        return 0
+    return min(180, max(60, 10 * game.players_alive_count))
+
+
+def _duration(seconds):
+    minutes, seconds = divmod(int(seconds), 60)
+    if not minutes:
+        return f"{seconds}s"
+    return f"{minutes} min" + (f" {seconds}s" if seconds else "")
+
+
 async def day_phase(game):
     game.night, game.day, game.detective_acted = False, True, False
     game.day_num += 1
+    game.voting_open = False
+    game.discussion = discussion_seconds(game)
+    game.voting_opens_at = datetime.now() + timedelta(seconds=game.discussion)
     game.day_start_time = datetime.now()
     game.protected = set()
     for p in game.players.values():
@@ -1062,11 +1079,11 @@ async def day_phase(game):
                 p,
                 "You are staying home due to your illness and cannot vote or use any powers.",
             )
-    await game.send_lobby(
-        f"It is now *daytime*. Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch"
-        " (a #number, name, @mention, or reply to their message)."
-        f" *{game.votes_to_lynch}* votes lynch at once; `{conf.CMD_PREFIX}votes` shows them."
-    )
+    if game.discussion:
+        await game.send_lobby(
+            "It is now *daytime*. Discuss who to lynch: voting opens in "
+            f"*{_duration(game.discussion)}*."
+        )
     await game.update_status()
     # detectives pick who to identify in their PM, so the group can't see it
     id_tasks = [
@@ -1080,6 +1097,19 @@ async def day_phase(game):
     ]
     lynched_uid, warned = None, False
     try:
+        while datetime.now() < game.voting_opens_at:
+            if win_condition(game) or game.ended:
+                return
+            await asyncio.sleep(1)
+        game.voting_open = True
+        game.day_start_time = datetime.now()
+        await game.send_lobby(
+            f"{'Voting is open!' if game.discussion else 'It is now *daytime*.'} "
+            f"Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch"
+            " (a #number, name, @mention, or reply to their message)."
+            f" *{game.votes_to_lynch}* votes lynch at once; `{conf.CMD_PREFIX}votes` shows them."
+            f" *{_duration(game.day_timeout)}* to vote."
+        )
         while (
             elapsed := (datetime.now() - game.day_start_time).total_seconds()
         ) < game.day_timeout:
@@ -1186,7 +1216,7 @@ async def request_detective_id(game, player):
             "Choose who to identify today (detective):",
             options,
             poll_user=player.user_id,
-            timeout=game.day_timeout,
+            timeout=game.discussion + game.day_timeout,
         )
         if choice and (target := game.get_player_by_user_id(choice)):
             await detective_identify(game, player, target)

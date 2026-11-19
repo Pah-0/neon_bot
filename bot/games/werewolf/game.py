@@ -51,6 +51,10 @@ class Game:
         self.start_time = None
         self.night_start_time = None
         self.day_start_time = None
+        # lynch votes wait for the day's discussion to end
+        self.voting_open = False
+        self.voting_opens_at = None
+        self.discussion = 0  # seconds
 
         self.night_num = 0
         self.day_num = 0
