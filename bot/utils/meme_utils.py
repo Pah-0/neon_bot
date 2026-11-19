@@ -188,7 +188,7 @@ async def random_meme(sub: str | None = None, allow_nsfw: bool = True) -> Meme:
             # Arctic Shift fails now and then (timeouts, 422s); the fallback
             # covers it
             log(e=f"Arctic Shift failed, using the fallback: {
-                    e!r}", warning=True)
+                e!r}", warning=True)
         except Exception:
             await logger(Exception)
         if not meme:
