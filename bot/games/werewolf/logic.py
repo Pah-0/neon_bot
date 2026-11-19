@@ -644,7 +644,10 @@ async def request_night_action(game, player, is_night_zero):
         options["pass"] = ["Pass"]
     prompt = f"Choose target ({player.role}):"
     if player.role in ["shaman", "crazed shaman"]:
-        prompt = f"Choose who receives your {player.totem.replace('_', ' ')} ({player.role}):"
+        prompt = f"Choose who receives your {
+            player.totem.replace(
+                '_', ' ')} ({
+            player.role}):"
     if player.role == "matchmaker":
         prompt = "Select 2 lovers, then Confirm:"
     elif player.role == "piper":
@@ -752,7 +755,9 @@ async def process_night_zero(game):
             uids = p.target.split(",") if p.target else []
             if len(uids) != 2 or uids[0] == uids[1]:
                 # no choice: random lovers, and the matchmaker isn't told who
-                uids = [x.user_id for x in random.sample(list(game.players.values()), 2)]
+                uids = [
+                    x.user_id for x in random.sample(list(game.players.values()), 2)
+                ]
             if len(uids) == 2:
                 p1, p2 = game.get_player_by_user_id(
                     uids[0]
