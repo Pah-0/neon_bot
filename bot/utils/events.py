@@ -263,8 +263,10 @@ class Event(BaseEvent):
             await logger(Exception)
             return None
         kind = self.media and self.media.DESCRIPTOR.full_name
-        if stored and stored[0].media and (
-            not kind or stored[0].media.DESCRIPTOR.full_name == kind
+        if (
+            stored
+            and stored[0].media
+            and (not kind or stored[0].media.DESCRIPTOR.full_name == kind)
         ):
             return stored[0]
         return None
