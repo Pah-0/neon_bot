@@ -1,5 +1,4 @@
 import asyncio
-import math
 import random
 from datetime import datetime
 
@@ -14,6 +13,7 @@ from .defaults import (
     DEFAULT_DAY_WARNING,
     DEFAULT_NIGHT_TIMEOUT,
     DEFAULT_NIGHT_WARNING,
+    DRUNK_MULTIPLIER,
     GUNNER_MULTIPLIER,
     MAX_PLAYERS,
     MIN_PLAYERS,
@@ -203,12 +203,14 @@ class Game:
 
                 player.templates.append(template)
                 if template == "gunner":
-                    player.bullet_count = math.ceil(
-                        self.total_players * GUNNER_MULTIPLIER
+                    player.bullet_count = int(
+                        GUNNER_MULTIPLIER * self.total_players + 1
                     )
+                    if player.role == "village drunk":
+                        player.bullet_count *= DRUNK_MULTIPLIER
                 elif template == "sharpshooter":
-                    player.bullet_count = math.ceil(
-                        self.total_players * SHARPSHOOTER_MULTIPLIER
+                    player.bullet_count = int(
+                        SHARPSHOOTER_MULTIPLIER * self.total_players + 1
                     )
                 elif template == "assassin" and player.role == "village drunk":
                     # too drunk to choose, the target is picked for them
@@ -363,6 +365,44 @@ class Game:
             )
         except Exception:
             await logger(Exception)
+
+    def role_text(self, p):
+        """What player p knows about their role, for the start of the game and myrole"""
+        msg = f"Your role is *{p.role}*.\n\n{p.description}"
+        # being cursed is kept hidden
+        if templates := [t for t in p.templates if t != "cursed villager"]:
+            msg += f"\n\nTemplates: {', '.join(templates)}"
+        if p.bullet_count:
+            msg += f"\nBullets left: {p.bullet_count}"
+        if p.totem:
+            msg += f"\n\nYour totem tonight is: *{p.totem.replace('_', ' ')}*."
+        if p.role == "minion":
+            msg += "\n\nThe wolves are: " + ", ".join(
+                f"{w.name} (#{w.id})"
+                for w in self.players.values()
+                if w.team == "wolf" and w.role not in ["minion", "cultist"]
+            )
+        if p.role == "turncoat":
+            side = "wolves" if "side:wolves" in p.other else "villagers"
+            msg += f"\n\nYou are siding with the *{side}*."
+        if p.role == "executioner" and (
+            target := self.get_player_by_user_id(p.execution_target)
+        ):
+            msg += f"\n\nYour target for lynch is *{target.name}*."
+        if target := self.get_player_by_user_id(p.assassin_target):
+            msg += f"\n\nYour assassination target is *{target.name}*."
+        if lovers := [self.get_player_by_user_id(u) for u in p.loves]:
+            msg += "\n\nYou are in love with: " + ", ".join(
+                f"*{x.name}*" for x in lovers if x
+            )
+        wolfchat = [w for w in self.players_alive_list if w.role in WOLFCHAT_ROLES]
+        if p in wolfchat and len(wolfchat) > 1:
+            msg += "\n\nYour team: " + ", ".join(
+                f"{w.name} ({w.role})" for w in wolfchat if w is not p
+            )
+        if not p.is_alive:
+            msg += "\n\nYou are dead."
+        return msg
 
     async def send_pm(self, player, message):
         try:

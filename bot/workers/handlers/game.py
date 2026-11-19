@@ -1,5 +1,4 @@
 import asyncio
-import random
 import re
 import time
 import uuid
@@ -9,7 +8,12 @@ from bot.config import bot, conf
 from bot.games.register import register_for_a_game
 from bot.games.werewolf.defaults import MAX_PLAYERS, MIN_PLAYERS
 from bot.games.werewolf.game import Game
-from bot.games.werewolf.logic import detective_identify, game_loop
+from bot.games.werewolf.logic import (
+    detective_identify,
+    game_loop,
+    redirect,
+    shot_outcome,
+)
 from bot.games.werewolf.roles import gamemodes
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
@@ -39,6 +43,7 @@ async def werewolf_handler(event, args, client):
         id <player> : detective only, in PM with the bot, learn a player's role, once per day
             (the detective also gets buttons for it each day; outside that, .id shows WhatsApp ids)
         shoot <player> : gunner/sharpshooter only, shoot a player during the day
+        myrole : I send you your role (and totem, lovers, targets) in PM again
         vote <player> : same as lynch; with no player, shows the votes
         votes : show today's lynch votes (in a lobby: the mode votes)
         retract : take back your lynch vote (in a lobby: your mode vote)
@@ -55,6 +60,8 @@ async def werewolf_handler(event, args, client):
     cmd = event.text.split()[0].removeprefix(conf.CMD_PREFIX).casefold()
     if cmd == "fstop":
         return await force_stop(event, args, client)
+    if cmd == "myrole":
+        return await my_role(event)
     if cmd in ("vote", "votes", "retract") and (
         game := bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
     ):
@@ -208,6 +215,22 @@ async def find_target(game, event, target_str):
     return game.get_player_by_user_id(lid) or game.get_player_by_user_id(number)
 
 
+async def my_role(event):
+    """Sends a player their role (and totem, lovers, targets...) in PM."""
+    games = bot.current_games_dict.get("werewolf", {})
+    if event.chat.is_group:
+        games = {event.chat.id: games.get(event.chat.id)}
+    for game in games.values():
+        if not game or isinstance(game, dict) or game.waiting:
+            continue
+        if player := game.get_player_by_user_id(event.from_user.id):
+            await game.send_pm(player, game.role_text(player))
+            if event.chat.is_group:
+                await event.react("📩")
+            return
+    await event.reply("You're not in a running werewolf game.")
+
+
 def detective_game(user_id):
     """The running game in which user_id is a living detective"""
     for game in bot.current_games_dict.get("werewolf", {}).values():
@@ -299,37 +322,49 @@ async def handle_game_command(game, event, cmd_type):
         if not target or not target.is_alive:
             return await event.reply("Invalid target.")
 
-        player.bullet_count -= 1
-        await game.send_lobby(
-            f"*{player.name}* takes out a gun and shoots at *{target.name}*!"
-        )
+        if target is player:
+            return await event.reply("You are holding it the wrong way.")
+        if "hexed" in player.other:
+            return await event.reply(
+                "You have been silenced, and are unable to use any special powers."
+            )
 
-        hit_chance = 1.0 if "sharpshooter" in player.templates else 0.8
-        # wolves intentionally miss other wolves; the werekitten is too cute to
-        # hit
-        if (
-            player.actual_team == "wolf" and target.actual_team == "wolf"
-        ) or target.role == "werekitten":
-            hit_chance = 0
-        if random.random() < hit_chance:
-            if target.actual_team == "wolf":
-                extra = await game.kill(target, "shot")
-                await game.send_lobby(
-                    f"Bullseye! *{target.name}* was a *{target.death_role}* and has been shot dead.\n{extra}"
-                )
-            else:
-                if random.random() < 0.5:
-                    extra = await game.kill(target, "shot")
-                    await game.send_lobby(
-                        f"Oh no! *{target.name}* was an innocent *{target.death_role}* but has been shot dead.\n{extra}"
-                    )
-                else:
-                    target.is_injured = True
-                    await game.send_lobby(
-                        f"*{target.name}* has been injured by the shot!"
-                    )
+        target = redirect(game, player, target)
+        player.bullet_count -= 1
+        outcome = shot_outcome(player, target)
+        if outcome in ("injure", "killvictim", "killwolf"):
+            msg = f"*{player.name}* shoots *{target.name}* with a bullet!\n\n"
         else:
-            await game.send_lobby("The shot missed!")
+            msg = ""
+        dead = None
+        if outcome == "miss":
+            msg += f"*{player.name}* is a lousy shooter and missed!"
+        elif outcome == "killwolf":
+            msg += f"*{target.name}* is a *{target.death_role}* and is dying from the silver bullet!"
+            dead = target
+        elif outcome == "suicide":
+            msg += (
+                f"Oh no! *{player.name}*'s gun was poorly maintained and has exploded! "
+                f"The village mourns a *gunner-{player.death_role}*."
+            )
+            dead = player
+        elif outcome == "killvictim":
+            msg += (
+                f"*{target.name}* is not a wolf but was fatally injured. "
+                f"The village has sacrificed a *{target.death_role}*."
+            )
+            dead = target
+        else:
+            msg += (
+                f"*{target.name}* is a villager and was injured. "
+                "Luckily the injury is minor and will heal after a day of rest."
+            )
+            target.is_injured = True
+        if dead:
+            msg += "\n" + await game.kill(dead, "shot")
+        await game.send_lobby(msg.rstrip())
+        if dead:
+            await game.check_traitor()
         await game.update_status()
 
 
@@ -377,6 +412,7 @@ async def were_info(event, args, client):
     msg += f"Detective, once per day, in PM with me: `{
         conf.CMD_PREFIX}id <player>` or the buttons I send\n"
     msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <player>`\n"
+    msg += f"Your role again, in PM: `{conf.CMD_PREFIX}myrole`\n"
     msg += f"See or take back votes: `{
         conf.CMD_PREFIX}votes`, `{
         conf.CMD_PREFIX}retract`\n"
