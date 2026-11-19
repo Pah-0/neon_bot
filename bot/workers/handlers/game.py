@@ -1,19 +1,20 @@
 import asyncio
 import random
+import re
 import uuid
 
 from bot import sudo_btn_lock
 from bot.config import bot, conf
 from bot.games.register import register_for_a_game
-from bot.games.werewolf.defaults import DETECTIVE_REVEAL_CHANCE, MAX_PLAYERS
+from bot.games.werewolf.defaults import MAX_PLAYERS
 from bot.games.werewolf.game import Game
-from bot.games.werewolf.logic import game_loop
+from bot.games.werewolf.logic import detective_identify, game_loop
 from bot.games.werewolf.roles import gamemodes
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
-from bot.workers.handlers.manage import show_ids
+from bot.workers.handlers.manage import show_ids, target_user
 
 
 async def werewolf_handler(event, args, client):
@@ -32,14 +33,18 @@ async def werewolf_handler(event, args, client):
             (can be combined with -j, --start or --mode, or used alone on an existing lobby)
 
     In-game commands (alive players only):
-        lynch <id or name> : vote to lynch a player, during the day
-        id <id or name> : detective only, learn a player's role, once per day
-            (outside that, .id shows WhatsApp ids)
-        shoot <id or name> : gunner/sharpshooter only, shoot a player during the day
+        (a player is named by #id, name, @mention or LID, or by replying to their message)
+        lynch <player> : vote to lynch a player, during the day
+        id <player> : detective only, in PM with the bot, learn a player's role, once per day
+            (the detective also gets buttons for it each day; outside that, .id shows WhatsApp ids)
+        shoot <player> : gunner/sharpshooter only, shoot a player during the day
     """
     cmd = event.text.split()[0].removeprefix(conf.CMD_PREFIX).casefold()
     if cmd in ("lynch", "id", "shoot"):
         game = bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
+        if cmd == "id" and not event.chat.is_group:
+            # a detective identifies from their PM with the bot
+            game = detective_game(event.from_user.id) or game
         if game and not isinstance(game, dict) and not game.waiting:
             player = game.get_player_by_user_id(event.from_user.id)
             # .id is the Detective's identify only for a living Detective
@@ -165,11 +170,33 @@ async def start_game(event, game):
     )
 
 
-def find_target(game, target_str):
-    return game.get_player_by_id(target_str.lstrip("#")) or next(
-        (p for p in game.players_alive_list if target_str.lower() in p.name.lower()),
-        None,
-    )
+async def find_target(game, event, target_str):
+    """
+    The player named by an @mention, LID or +number, else by #id or name,
+    else the one whose message was replied to
+    """
+    if target_str and not re.fullmatch(r"@?\+?[0-9]{5,16}", target_str.split()[0]):
+        return game.get_player_by_id(target_str.lstrip("#")) or next(
+            (
+                p
+                for p in game.players_alive_list
+                if target_str.lower() in p.name.lower()
+            ),
+            None,
+        )
+    lid, number, _ = await target_user(event, target_str or "")
+    return game.get_player_by_user_id(lid) or game.get_player_by_user_id(number)
+
+
+def detective_game(user_id):
+    """The running game in which user_id is a living detective"""
+    for game in bot.current_games_dict.get("werewolf", {}).values():
+        if isinstance(game, dict) or game.waiting:
+            continue
+        player = game.get_player_by_user_id(user_id)
+        if player and player.is_alive and player.role == "detective":
+            return game
+    return None
 
 
 async def handle_game_command(game, event, cmd_type):
@@ -184,10 +211,12 @@ async def handle_game_command(game, event, cmd_type):
     if cmd_type == "lynch":
         if not game.day:
             return await event.reply("You can only lynch during the day!")
-        if not target_str:
-            return await event.reply(f"Usage: {conf.CMD_PREFIX}lynch <id or name>")
+        if not (target_str or event.reply_to_message):
+            return await event.reply(
+                f"Usage: {conf.CMD_PREFIX}lynch <id, name or @mention>, or reply to them"
+            )
 
-        target = find_target(game, target_str)
+        target = await find_target(game, event, target_str)
         if not target or not target.is_alive:
             return await event.reply("Invalid target.")
 
@@ -201,22 +230,16 @@ async def handle_game_command(game, event, cmd_type):
             return
         if game.detective_acted:
             return await event.reply("You have already used your ability today.")
-        if not target_str:
-            return await event.reply(f"Usage: {conf.CMD_PREFIX}id <id or name>")
+        if not (target_str or event.reply_to_message):
+            return await event.reply(
+                f"Usage: {conf.CMD_PREFIX}id <id or name>, here in PM (or the buttons I sent you)"
+            )
 
-        target = find_target(game, target_str)
+        target = await find_target(game, event, target_str)
         if not target or not target.is_alive:
             return await event.reply("Invalid target.")
 
-        game.detective_acted = True
-        await game.send_pm(
-            player,
-            f"Your investigation reveals that {target.name} is a *{target.role}*.",
-        )
-        if random.random() < DETECTIVE_REVEAL_CHANCE:
-            await game.wolfchat(
-                f"The detective has been revealed! It is {player.name}."
-            )
+        await detective_identify(game, player, target)
 
     elif cmd_type == "shoot":
         if not game.day:
@@ -225,10 +248,12 @@ async def handle_game_command(game, event, cmd_type):
             return
         if player.bullet_count <= 0:
             return await event.reply("You are out of bullets!")
-        if not target_str:
-            return await event.reply(f"Usage: {conf.CMD_PREFIX}shoot <id or name>")
+        if not (target_str or event.reply_to_message):
+            return await event.reply(
+                f"Usage: {conf.CMD_PREFIX}shoot <id, name or @mention>, or reply to them"
+            )
 
-        target = find_target(game, target_str)
+        target = await find_target(game, event, target_str)
         if not target or not target.is_alive:
             return await event.reply("Invalid target.")
 
@@ -260,6 +285,7 @@ async def handle_game_command(game, event, cmd_type):
                     )
         else:
             await game.send_lobby("The shot missed!")
+        await game.update_status()
 
 
 async def werewolf_restriction_handler(client, event):
@@ -291,9 +317,10 @@ async def were_info(event, args, client):
     msg += "Restricted mode (deletes messages from dead/non-players): add `-r` to `-j`, `--start` or `--mode`\n"
     msg += "Lobbies auto-start after 3 minutes without joins/leaves.\n\n"
     msg += "*In-game (during the day):*\n"
-    msg += f"Vote to lynch: `{conf.CMD_PREFIX}lynch <id or name>`\n"
-    msg += f"Detective, once per day: `{conf.CMD_PREFIX}id <id or name>`\n"
-    msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <id or name>`"
+    msg += f"Vote to lynch: `{conf.CMD_PREFIX}lynch <player>`\n"
+    msg += f"Detective, once per day, in PM with me: `{conf.CMD_PREFIX}id <player>` or the buttons I send\n"
+    msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <player>`\n"
+    msg += "A player is their #number, name, @mention, or reply to their message."
     return await event.reply(msg)
 
 

@@ -89,8 +89,8 @@ roles = {
     "detective": [
         "villager",
         "detectives",
-        "Your job is to determine all of the wolves and traitors. During the day, you may use `id <player>` in private message "
-        "to determine their true identity. However you risk a {}% chance of revealing your role to the wolves every time you use your ability.".format(
+        "Your job is to determine all of the wolves and traitors. Once each day, you may pick a player from the buttons I send you in private message "
+        "(or send me `id <player>` there) to determine their true identity. However you risk a {}% chance of revealing your role to the wolves every time you use your ability.".format(
             int(DETECTIVE_REVEAL_CHANCE * 100)
         ),
     ],

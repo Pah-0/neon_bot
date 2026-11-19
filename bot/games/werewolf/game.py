@@ -3,7 +3,9 @@ import math
 import random
 from datetime import datetime
 
+from bot import Message
 from bot.config import bot
+from bot.utils.log_utils import logger
 
 from .defaults import (
     ACTUAL_WOLVES,
@@ -50,6 +52,7 @@ class Game:
         self.day_start_time = None
 
         self.night_num = 0
+        self.status_msg_id = None  # the pinned in-game status message
         self.detective_acted = False
 
         self.day_warning = DEFAULT_DAY_WARNING
@@ -175,6 +178,45 @@ class Game:
     async def send_lobby(self, message):
         await bot.client.send_message(self.chat_jid, message)
 
+    def status_text(self):
+        phase = "Day" if self.day else "Night" if self.night else "Starting"
+        msg = f"*Werewolf Game Status ({self.mode})*\n"
+        msg += f"Players alive: {self.players_alive_count}/{len(self.players)}\n"
+        msg += f"Phase: {phase}\n"
+        msg += f"Restricted: {self.restricted}\n"
+        msg += "*Players:*\n"
+        for p in self.players.values():
+            status = "💀" if not p.is_alive else "🟢"
+            msg += f"{status} {p.name} (#{p.id})\n"
+        return msg.rstrip()
+
+    async def update_status(self):
+        """Posts and pins the status message, or edits it once posted."""
+        try:
+            if self.status_msg_id:
+                return await bot.client.edit_message(
+                    self.chat_jid,
+                    self.status_msg_id,
+                    Message(conversation=self.status_text()),
+                )
+            resp = await bot.client.send_message(self.chat_jid, self.status_text())
+            self.status_msg_id = resp.ID
+            await bot.client.pin_message(
+                self.chat_jid, bot.client.me.JID, resp.ID, 86400
+            )
+        except Exception:
+            await logger(Exception)
+
+    async def unpin_status(self):
+        if not self.status_msg_id:
+            return
+        try:
+            await bot.client.pin_message(
+                self.chat_jid, bot.client.me.JID, self.status_msg_id, 1
+            )
+        except Exception:
+            await logger(Exception)
+
     async def send_pm(self, player, message):
         try:
             await bot.client.send_message(player.jid, message)
@@ -277,15 +319,7 @@ class Game:
                 msg += f"- {name}\n"
             await event.reply(msg)
         else:
-            msg = f"*Werewolf Game Status ({self.mode})*\n"
-            msg += f"Players alive: {self.players_alive_count}/{len(self.players)}\n"
-            msg += f"Phase: {'Day' if self.day else 'Night'}\n"
-            msg += f"Restricted: {self.restricted}\n"
-            msg += "*Players:*\n"
-            for p in self.players.values():
-                status = "💀" if not p.is_alive else "🟢"
-                msg += f"{status} {p.name} (#{p.id})\n"
-            await event.reply(msg)
+            await event.reply(self.status_text())
 
     async def check_traitor(self):
         wolves = [p for p in self.players_alive_list if p.role in ACTUAL_WOLVES]

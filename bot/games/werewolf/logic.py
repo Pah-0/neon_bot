@@ -14,6 +14,7 @@ from bot.utils.sudo_button_utils import (
 
 from .defaults import (
     COMMANDS_FOR_ROLE,
+    DETECTIVE_REVEAL_CHANCE,
     SHAMAN_TOTEMS,
     WOLF_SHAMAN_TOTEMS,
     WOLFCHAT_ROLES,
@@ -221,6 +222,7 @@ async def game_loop(game):
                     f"{w.name} ({w.role})" for w in wolfchat if w is not p
                 )
             await game.send_pm(p, msg)
+        await game.update_status()
         await night_phase(game, is_night_zero=True)
         while not game.ended:
             if win := win_condition(game):
@@ -235,6 +237,7 @@ async def game_loop(game):
         await game.send_lobby("*An error occurred, the game has been stopped.*")
     finally:
         game.close()
+        await game.unpin_status()
 
 
 def has_night_action(game, p, is_night_zero):
@@ -260,6 +263,7 @@ async def night_phase(game, is_night_zero=False):
         game.night_num += 1
     game.night_start_time = datetime.now()
     await game.send_lobby("It is now *nighttime*.")
+    await game.update_status()
     for p in game.players.values():
         p.target = ""
         p.remove_other("guarded")
@@ -559,22 +563,34 @@ async def day_phase(game):
     for p in game.players.values():
         p.vote = ""
     await game.send_lobby(
-        f"It is now *daytime*. Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch."
+        f"It is now *daytime*. Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch"
+        " (a #number, name, @mention, or reply to their message)."
     )
+    await game.update_status()
+    # detectives pick who to identify in their PM, so the group can't see it
+    id_tasks = [
+        asyncio.create_task(request_detective_id(game, p))
+        for p in game.players_alive_list
+        if p.role == "detective"
+    ]
     elapsed, warned = 0, False
-    # end the day early once everyone alive has voted
-    while elapsed < game.day_timeout:
-        if win_condition(game):
-            return
-        if all(p.vote for p in game.players_alive_list):
-            break
-        if not warned and elapsed >= game.day_warning:
-            warned = True
-            await game.send_lobby(
-                f"*{game.day_timeout - elapsed}s* left to vote before the day ends!"
-            )
-        await asyncio.sleep(5)
-        elapsed += 5
+    try:
+        # end the day early once everyone alive has voted
+        while elapsed < game.day_timeout:
+            if win_condition(game):
+                return
+            if all(p.vote for p in game.players_alive_list):
+                break
+            if not warned and elapsed >= game.day_warning:
+                warned = True
+                await game.send_lobby(
+                    f"*{game.day_timeout - elapsed}s* left to vote before the day ends!"
+                )
+            await asyncio.sleep(5)
+            elapsed += 5
+    finally:
+        for task in id_tasks:
+            task.cancel()
     vote_counts = {}
     for p in game.players_alive_list:
         v_weight = 1
@@ -620,6 +636,43 @@ async def day_phase(game):
             ),
         )
     await game.check_traitor()
+
+
+async def request_detective_id(game, player):
+    """Sends the detective buttons to pick a player to identify today."""
+    options = {
+        p.user_id: f"{p.name} (#{p.id})"
+        for p in game.players_alive_list
+        if p.user_id != player.user_id
+    }
+    try:
+        choice = await choose(
+            player.jid,
+            "Choose who to identify today (detective):",
+            options,
+            poll_user=player.user_id,
+            timeout=game.day_timeout,
+        )
+        if choice and (target := game.get_player_by_user_id(choice)):
+            await detective_identify(game, player, target)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        await logger(Exception)
+
+
+async def detective_identify(game, player, target):
+    """The detective learns target's role, once per day."""
+    if not (game.day and player.is_alive and target.is_alive):
+        return await game.send_pm(player, "You can't identify anyone right now.")
+    if game.detective_acted:
+        return await game.send_pm(player, "You have already used your ability today.")
+    game.detective_acted = True
+    await game.send_pm(
+        player, f"Your investigation reveals that {target.name} is a *{target.role}*."
+    )
+    if random.random() < DETECTIVE_REVEAL_CHANCE:
+        await game.wolfchat(f"The detective has been revealed! It is {player.name}.")
 
 
 async def end_game(game, win_data):
