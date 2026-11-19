@@ -372,13 +372,18 @@ async def were_info(event, args, client):
     msg += f"Detective, once per day, in PM with me: `{
         conf.CMD_PREFIX}id <player>` or the buttons I send\n"
     msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <player>`\n"
-    msg += f"See or take back votes: `{conf.CMD_PREFIX}votes`, `{conf.CMD_PREFIX}retract`\n"
+    msg += f"See or take back votes: `{
+        conf.CMD_PREFIX}votes`, `{
+        conf.CMD_PREFIX}retract`\n"
     msg += f"Lynch no one: `{conf.CMD_PREFIX}abstain` (not on the first day)\n"
     msg += "A player is their #number, name, @mention, or reply to their message.\n"
     msg += "A majority lynches at once; when the day ends, the most votes win (none on a tie).\n"
-    msg += "Players silent for 5 minutes are warned, then found dead a minute later.\n\n"
+    msg += (
+        "Players silent for 5 minutes are warned, then found dead a minute later.\n\n"
+    )
     msg += "*In a lobby:*\n"
-    msg += f"Vote for a mode in the poll, or `{conf.CMD_PREFIX}vote <mode>`; a majority picks it, fewer votes make it likelier\n"
+    msg += f"Vote for a mode in the poll, or `{
+        conf.CMD_PREFIX}vote <mode>`; a majority picks it, fewer votes make it likelier\n"
     msg += f"Stop a lobby or game (admins): `{conf.CMD_PREFIX}fstop [reason]`"
     return await event.reply(msg)
 
@@ -501,7 +506,9 @@ async def send_mode_poll(game):
             game.mode_votes.pop(event.from_user.id, None)
 
     options = {
-        m: (f"{m} ({gamemodes[m]['min_players']}-{gamemodes[m]['max_players']} players)",)
+        m: (
+            f"{m} ({gamemodes[m]['min_players']}-{gamemodes[m]['max_players']} players)",
+        )
         for m in game.votable_modes
     }
     try:

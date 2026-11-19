@@ -625,8 +625,12 @@ async def day_phase(game):
             if win_condition(game):
                 return
             counts = game.vote_counts()
-            # half the voters abstaining, or a majority on someone, ends the day
-            if counts.get("abstain", 0) and counts["abstain"] >= len(game.able_voters) / 2:
+            # half the voters abstaining, or a majority on someone, ends the
+            # day
+            if (
+                counts.get("abstain", 0)
+                and counts["abstain"] >= len(game.able_voters) / 2
+            ):
                 lynched_uid = "abstain"
                 break
             on_players = {uid: n for uid, n in counts.items() if uid != "abstain"}

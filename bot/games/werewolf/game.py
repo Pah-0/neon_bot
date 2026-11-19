@@ -238,9 +238,7 @@ class Game:
             weight = sum(
                 max(
                     0,
-                    1
-                    + ("impatience_totem" in p.other)
-                    - ("pacifism_totem" in p.other),
+                    1 + ("impatience_totem" in p.other) - ("pacifism_totem" in p.other),
                 )
                 for p in voters
             )
@@ -265,7 +263,10 @@ class Game:
             names = ", ".join(v.name for v in voters)
             msg += f"- {target.name} (#{target.id}): {len(voters)} ({names})\n"
         if abstainers:
-            msg += f"- Abstain: {len(abstainers)} ({', '.join(p.name for p in abstainers)})\n"
+            msg += f"- Abstain: {
+                len(abstainers)} ({
+                ', '.join(
+                    p.name for p in abstainers)})\n"
         return msg.rstrip()
 
     def mode_votes_text(self):
@@ -279,7 +280,8 @@ class Game:
             "fewer only make it likelier.\n"
         )
         if self.requested_mode:
-            msg += f"The mode is set to *{self.requested_mode}*, so votes don't count.\n"
+            msg += f"The mode is set to *{
+                self.requested_mode}*, so votes don't count.\n"
         if not votes:
             return msg + "No one has voted for a mode yet."
         for mode, names in sorted(votes.items(), key=lambda kv: -len(kv[1])):
@@ -436,7 +438,8 @@ class Game:
     async def status(self, event):
         if self.waiting:
             msg = f"*Werewolf Game Lobby*\n"
-            msg += f"Mode: {self.requested_mode or 'Auto (by chance and votes)'}\n"
+            msg += f"Mode: {
+                self.requested_mode or 'Auto (by chance and votes)'}\n"
             msg += f"Players: {self.total_players}\n"
             msg += "*Joined players:*\n"
             for p_id in self.player_ids:
