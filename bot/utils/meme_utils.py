@@ -5,6 +5,7 @@ meme-api.com, which only keeps a few dozen of each subreddit's current hot
 posts, is the fallback.
 """
 
+import asyncio
 import html
 import random
 import re
@@ -17,7 +18,7 @@ from bot import bot, jid
 from bot.pkgs.reddit_dl import HEADERS
 from bot.utils.bot_utils import png_to_jpg
 from bot.utils.db_utils import save2db2
-from bot.utils.log_utils import logger
+from bot.utils.log_utils import log, logger
 from bot.workers.auto.schedule import scheduler2
 
 ARCTIC_SHIFT_API = "https://arctic-shift.photon-reddit.com/api"
@@ -183,6 +184,9 @@ async def random_meme(sub: str | None = None, allow_nsfw: bool = True) -> Meme:
             )
         except NoMeme:
             raise
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # Arctic Shift fails now and then (timeouts, 422s); the fallback covers it
+            log(e=f"Arctic Shift failed, using the fallback: {e!r}", warning=True)
         except Exception:
             await logger(Exception)
         if not meme:
