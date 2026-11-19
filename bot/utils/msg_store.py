@@ -117,7 +117,7 @@ async def save_messages(msgs: [Event]):
                 visible=(
                     bool(
                         (event.media or event.text)
-                        and not (event.album or event.protocol)
+                        and not (event.album or event.protocol or event.hd_parent_id)
                     )
                 ),
             )
@@ -126,6 +126,50 @@ async def save_messages(msgs: [Event]):
         async with session.begin():
             session.add_all(items)
         await session.commit()
+    if hd_copies := [e for e in msgs if e.hd_parent_id and e.media]:
+        await store_hd_copies(hd_copies)
+
+
+async def store_hd_copies(events: [Event]):
+    """
+    Puts the media of HD copies in place of their SD messages' media, so the
+    stored SD message (what replies point to) gives the HD file
+    """
+    async with async_session() as session:
+        async with session.begin():
+            for event in events:
+                row = await session.scalar(
+                    select(Message)
+                    .where(
+                        Message.chat_id == event.chat.id,
+                        Message.id == event.hd_parent_id,
+                    )
+                    .order_by(Message.timestamp)
+                    .limit(1)
+                )
+                if not row:
+                    continue
+                parent = load_proto(row.raw)
+                field = next(
+                    (
+                        fd.name
+                        for fd, _ in parent.Message.ListFields()
+                        if fd.message_type == event.media.DESCRIPTOR
+                    ),
+                    None,
+                )
+                if not field:  # e.g. a view once SD message
+                    continue
+                sd = getattr(parent.Message, field)
+                hd = type(event.media)()
+                hd.CopyFrom(event.media)
+                # Keep what was said with the SD message
+                if hasattr(hd, "caption") and not hd.caption and sd.caption:
+                    hd.caption = sd.caption
+                if sd.HasField("contextInfo"):
+                    hd.contextInfo.CopyFrom(sd.contextInfo)
+                sd.CopyFrom(hd)
+                row.raw = parent.SerializeToString()
 
 
 async def get_messages(
