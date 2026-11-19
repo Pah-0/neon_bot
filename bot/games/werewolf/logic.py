@@ -15,6 +15,8 @@ from bot.utils.sudo_button_utils import (
 from .defaults import (
     COMMANDS_FOR_ROLE,
     DETECTIVE_REVEAL_CHANCE,
+    PLAYER_TIMEOUT,
+    PLAYER_TIMEOUT2,
     SHAMAN_TOTEMS,
     WOLF_SHAMAN_TOTEMS,
     WOLFCHAT_ROLES,
@@ -196,7 +198,43 @@ def win_condition(game):
     return win_team, win_lore, winners
 
 
+async def idle_watch(game):
+    """
+    Warns living players who've sent nothing for PLAYER_TIMEOUT seconds, and
+    kills those still silent PLAYER_TIMEOUT2 seconds later.
+    """
+    while not game.ended:
+        await asyncio.sleep(10)
+        now = datetime.now()
+        for p in game.players_alive_list:
+            if not p.is_alive:  # a lover who just died of grief
+                continue
+            idle = (now - game.last_seen.get(p.user_id, now)).total_seconds()
+            if idle >= PLAYER_TIMEOUT + PLAYER_TIMEOUT2:
+                game.idle_warned.discard(p.user_id)
+                extra = await game.kill(p, "idle")
+                await game.send_lobby(
+                    f"*{p.name}* didn't get out of bed for a very long time and has "
+                    f"been found dead. The survivors bury the *{p.role}*.\n{extra}".rstrip()
+                )
+                await game.check_traitor()
+                await game.update_status()
+            elif idle >= PLAYER_TIMEOUT and p.user_id not in game.idle_warned:
+                game.idle_warned.add(p.user_id)
+                await game.send_lobby(
+                    f"@{p.user_id}, you have been idling for a while. "
+                    "Say something soon or you might be declared dead.",
+                    mentions=True,
+                )
+                await game.send_pm(
+                    p,
+                    "You have been idling in the game for a while. "
+                    "Say something there soon or you might be declared dead.",
+                )
+
+
 async def game_loop(game):
+    idle_task = asyncio.create_task(idle_watch(game))
     try:
         await game.send_lobby(
             f"Welcome to Werewolf! Using the *{game.mode}* game mode with *{game.total_players}* players."
@@ -236,6 +274,8 @@ async def game_loop(game):
         await logger(Exception)
         await game.send_lobby("*An error occurred, the game has been stopped.*")
     finally:
+        idle_task.cancel()
+        game.ended = True
         game.close()
         await game.unpin_status()
 
@@ -288,10 +328,12 @@ async def night_phase(game, is_night_zero=False):
         for p in game.players.values()
         if has_night_action(game, p, is_night_zero)
     ]
-    if tasks:
-        _, pending = await asyncio.wait(tasks, timeout=game.night_timeout + 5)
-        # don't let late answers leak into the next phase
-        for task in pending:
+    try:
+        if tasks:
+            await asyncio.wait(tasks, timeout=game.night_timeout + 5)
+    finally:
+        # don't let late answers leak into the next phase (or a stopped game)
+        for task in tasks:
             task.cancel()
     if is_night_zero:
         await process_night_zero(game)
@@ -559,12 +601,14 @@ async def process_night(game):
 
 async def day_phase(game):
     game.night, game.day, game.detective_acted = False, True, False
+    game.day_num += 1
     game.day_start_time = datetime.now()
     for p in game.players.values():
         p.vote = ""
     await game.send_lobby(
         f"It is now *daytime*. Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch"
         " (a #number, name, @mention, or reply to their message)."
+        f" *{game.votes_to_lynch}* votes lynch at once; `{conf.CMD_PREFIX}votes` shows them."
     )
     await game.update_status()
     # detectives pick who to identify in their PM, so the group can't see it
@@ -573,41 +617,51 @@ async def day_phase(game):
         for p in game.players_alive_list
         if p.role == "detective"
     ]
-    elapsed, warned = 0, False
+    lynched_uid, warned = None, False
     try:
-        # end the day early once everyone alive has voted
-        while elapsed < game.day_timeout:
+        while (
+            elapsed := (datetime.now() - game.day_start_time).total_seconds()
+        ) < game.day_timeout:
             if win_condition(game):
                 return
-            if all(p.vote for p in game.players_alive_list):
+            counts = game.vote_counts()
+            # half the voters abstaining, or a majority on someone, ends the day
+            if counts.get("abstain", 0) and counts["abstain"] >= len(game.able_voters) / 2:
+                lynched_uid = "abstain"
+                break
+            on_players = {uid: n for uid, n in counts.items() if uid != "abstain"}
+            if on_players and (top := max(on_players.values())) >= game.votes_to_lynch:
+                lynched_uid = random.choice(
+                    [uid for uid, n in on_players.items() if n == top]
+                )
+                break
+            # nothing left to wait for once everyone has voted
+            if all(p.vote for p in game.able_voters):
                 break
             if not warned and elapsed >= game.day_warning:
                 warned = True
                 await game.send_lobby(
-                    f"*{game.day_timeout - elapsed}s* left to vote before the day ends!"
+                    f"*{int(game.day_timeout - elapsed)}s* left to vote before the day "
+                    "ends! Then the most votes win; no one is lynched on a tie."
                 )
-            await asyncio.sleep(5)
-            elapsed += 5
+            await asyncio.sleep(1)
     finally:
         for task in id_tasks:
             task.cancel()
-    vote_counts = {}
-    for p in game.players_alive_list:
-        v_weight = 1
-        if "impatience_totem" in p.other:
-            v_weight += 1
-        if "pacifism_totem" in p.other:
-            v_weight -= 1
-        target = game.get_player_by_user_id(p.vote)
-        if (p.vote == "abstain" or (target and target.is_alive)) and v_weight > 0:
-            vote_counts[p.vote] = vote_counts.get(p.vote, 0) + v_weight
-    if not vote_counts:
-        return await game.send_lobby("Not enough votes were cast to lynch a player.")
-    top = max(vote_counts.values())
-    leaders = [uid for uid, count in vote_counts.items() if count == top]
-    if len(leaders) > 1:
-        return await game.send_lobby("The vote was tied, nobody was lynched today.")
-    lynched_uid = leaders[0]
+    if not lynched_uid:
+        counts = game.vote_counts()
+        if not counts:
+            return await game.send_lobby(
+                "Not enough votes were cast to lynch a player."
+            )
+        top = max(counts.values())
+        leaders = [uid for uid, n in counts.items() if n == top and uid != "abstain"]
+        if not leaders:
+            lynched_uid = "abstain"
+        elif len(leaders) > 1:
+            return await game.send_lobby("The vote was tied, nobody was lynched today.")
+        else:
+            lynched_uid = leaders[0]
     if lynched_uid == "abstain":
         return await game.send_lobby(
             "The village has agreed to not lynch anyone today."

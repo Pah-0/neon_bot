@@ -6,13 +6,13 @@ import uuid
 from bot import sudo_btn_lock
 from bot.config import bot, conf
 from bot.games.register import register_for_a_game
-from bot.games.werewolf.defaults import MAX_PLAYERS
+from bot.games.werewolf.defaults import MAX_PLAYERS, MIN_PLAYERS
 from bot.games.werewolf.game import Game
 from bot.games.werewolf.logic import detective_identify, game_loop
 from bot.games.werewolf.roles import gamemodes
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_args
+from bot.utils.msg_utils import get_args, user_is_admin, user_is_privileged
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
 from bot.workers.handlers.manage import show_ids, target_user
 
@@ -38,9 +38,28 @@ async def werewolf_handler(event, args, client):
         id <player> : detective only, in PM with the bot, learn a player's role, once per day
             (the detective also gets buttons for it each day; outside that, .id shows WhatsApp ids)
         shoot <player> : gunner/sharpshooter only, shoot a player during the day
+        vote <player> : same as lynch; with no player, shows the votes
+        votes : show today's lynch votes (in a lobby: the mode votes)
+        retract : take back your lynch vote (in a lobby: your mode vote)
+        abstain : vote to lynch no one today (not on the first day, nor in evilvillage)
+    A majority of the players able to vote lynches at once; when the day runs out,
+    the most votes win, and no one is lynched on a tie.
+    Players who send nothing for 5 minutes are warned, then killed a minute later.
+
+    In a lobby with enough players, a poll lets players vote for a mode:
+    a majority picks it, fewer votes make it likelier. vote <mode> works too.
+
+    fstop [reason] : [Owner | Sudo | Admin] stop the lobby or game in this chat
     """
     cmd = event.text.split()[0].removeprefix(conf.CMD_PREFIX).casefold()
-    if cmd in ("lynch", "id", "shoot"):
+    if cmd == "fstop":
+        return await force_stop(event, args, client)
+    if cmd in ("vote", "votes", "retract") and (
+        game := bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
+    ):
+        if not isinstance(game, dict) and game.waiting:
+            return await lobby_vote(game, event, cmd, (args or "").strip())
+    if cmd in ("lynch", "vote", "votes", "retract", "abstain", "id", "shoot"):
         game = bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
         if cmd == "id" and not event.chat.is_group:
             # a detective identifies from their PM with the bot
@@ -164,7 +183,7 @@ async def start_game(event, game):
     # assign before the task starts so the game can't be started twice
     game.assign_roles()
     game.activity.set()  # wake the lobby manager so it can clean up
-    asyncio.create_task(game_loop(game))
+    game.task = asyncio.create_task(game_loop(game))
     return await event.reply(
         f"Game starting with mode *{game.mode}*! Restricted: {game.restricted}. Check your PMs for roles."
     )
@@ -200,21 +219,28 @@ def detective_game(user_id):
 
 
 async def handle_game_command(game, event, cmd_type):
-    """Runs the in-game lynch, id and shoot commands for alive players."""
+    """Runs the in-game commands; only votes is open to everyone."""
+    args = event.text.split(maxsplit=1)
+    target_str = args[1].strip() if len(args) > 1 else None
+    voting = cmd_type in ("lynch", "vote", "retract", "abstain")
+    if cmd_type == "votes":
+        if not game.day:
+            return await event.reply("Votes are only cast during the day.")
+        return await event.reply(game.votes_text())
+
     player = game.get_player_by_user_id(event.from_user.id)
     if not player or not player.is_alive:
         return
 
-    args = event.text.split(maxsplit=1)
-    target_str = args[1].strip() if len(args) > 1 else None
-
-    if cmd_type == "lynch":
+    if voting:
         if not game.day:
-            return await event.reply("You can only lynch during the day!")
+            return await event.reply("You can only vote during the day!")
+        if player.is_injured:
+            return await event.reply("You are injured and unable to vote.")
+
+    if cmd_type in ("lynch", "vote"):
         if not (target_str or event.reply_to_message):
-            return await event.reply(
-                f"Usage: {conf.CMD_PREFIX}lynch <id, name or @mention>, or reply to them"
-            )
+            return await event.reply(game.votes_text())
 
         target = await find_target(game, event, target_str)
         if not target or not target.is_alive:
@@ -222,6 +248,20 @@ async def handle_game_command(game, event, cmd_type):
 
         player.vote = target.user_id
         await event.reply(f"You voted to lynch {target.name}!")
+
+    elif cmd_type == "retract":
+        if not player.vote:
+            return await event.reply("You haven't voted today.")
+        player.vote = ""
+        await event.reply("You took back your vote.")
+
+    elif cmd_type == "abstain":
+        if game.mode == "evilvillage":
+            return await event.reply("The evilvillage cannot abstain.")
+        if game.day_num == 1:
+            return await event.reply("The village may not abstain on the first day.")
+        player.vote = "abstain"
+        await game.send_lobby(f"*{player.name}* votes to not lynch anyone today.")
 
     elif cmd_type == "id":
         if not game.day:
@@ -288,7 +328,18 @@ async def handle_game_command(game, event, cmd_type):
         await game.update_status()
 
 
+def note_activity(event):
+    """Anything a player sends, in the game's group or to the bot, keeps them from idling out."""
+    games = bot.current_games_dict.get("werewolf", {})
+    if event.chat.is_group:
+        games = {event.chat.id: games.get(event.chat.id)}
+    for game in games.values():
+        if game and not isinstance(game, dict) and not game.waiting:
+            game.note_activity(event.from_user.id)
+
+
 async def werewolf_restriction_handler(client, event):
+    note_activity(event)
     if not event.chat.is_group:
         return
     current_games = bot.current_games_dict.get("werewolf", {})
@@ -321,7 +372,14 @@ async def were_info(event, args, client):
     msg += f"Detective, once per day, in PM with me: `{
         conf.CMD_PREFIX}id <player>` or the buttons I send\n"
     msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <player>`\n"
-    msg += "A player is their #number, name, @mention, or reply to their message."
+    msg += f"See or take back votes: `{conf.CMD_PREFIX}votes`, `{conf.CMD_PREFIX}retract`\n"
+    msg += f"Lynch no one: `{conf.CMD_PREFIX}abstain` (not on the first day)\n"
+    msg += "A player is their #number, name, @mention, or reply to their message.\n"
+    msg += "A majority lynches at once; when the day ends, the most votes win (none on a tie).\n"
+    msg += "Players silent for 5 minutes are warned, then found dead a minute later.\n\n"
+    msg += "*In a lobby:*\n"
+    msg += f"Vote for a mode in the poll, or `{conf.CMD_PREFIX}vote <mode>`; a majority picks it, fewer votes make it likelier\n"
+    msg += f"Stop a lobby or game (admins): `{conf.CMD_PREFIX}fstop [reason]`"
     return await event.reply(msg)
 
 
@@ -357,7 +415,7 @@ async def auto_start_manager(event, game):
         elif "leave" in actions:
             return await game.leave(event, notify=True)
 
-    msg = None
+    msg = mode_poll = None
     token = uuid.uuid4().hex[:10]
     sent = []
     try:
@@ -384,14 +442,16 @@ async def auto_start_manager(event, game):
             )
         # start once nobody has joined/left for a while
         while game.waiting and len(game.player_ids) < MAX_PLAYERS:
-            if not game.player_ids:  # everyone left
+            if not game.player_ids or game.ended:  # everyone left, or stopped
                 return
+            if not mode_poll and game.total_players >= MIN_PLAYERS:
+                mode_poll = await send_mode_poll(game)
             try:
                 await asyncio.wait_for(game.activity.wait(), timeout=180)
             except asyncio.TimeoutError:
                 break
             game.activity.clear()
-        if not game.waiting:  # Already started elsewhere
+        if not game.waiting or game.ended:  # started elsewhere, or stopped
             return
         if not game.player_ids:
             return
@@ -410,12 +470,93 @@ async def auto_start_manager(event, game):
                 )
             except Exception:
                 pass
-        if msg:
+        for poll in (msg, mode_poll):
+            if not poll:
+                continue
             async with sudo_btn_lock:
-                active_poll_dict.pop(msg.ID, None)
+                active_poll_dict.pop(poll.ID, None)
             try:
                 await bot.client.revoke_message(
-                    event.chat.jid, bot.client.me.JID, msg.ID
+                    event.chat.jid, bot.client.me.JID, poll.ID
                 )
             except Exception:
                 pass
+
+
+async def send_mode_poll(game):
+    """Posts the lobby's mode poll; returns its message, or None if it can't."""
+    if game.requested_mode:
+        return None
+
+    async def callback(event, poll_msg_key):
+        if event.from_user.id not in game.player_ids:
+            return
+        selected = await bot.client.decrypt_poll_vote(event.message)
+        if not (poll_info := active_poll_dict.get(poll_msg_key.ID)):
+            return
+        modes = [poll_info.get(s.hex()) for s in selected.selectedOptions]
+        if mode := next((m for m in modes if m), None):
+            game.mode_votes[event.from_user.id] = mode
+        else:  # vote taken back
+            game.mode_votes.pop(event.from_user.id, None)
+
+    options = {
+        m: (f"{m} ({gamemodes[m]['min_players']}-{gamemodes[m]['max_players']} players)",)
+        for m in game.votable_modes
+    }
+    try:
+        _, msg = await create_sudo_button(
+            name="Vote for the werewolf mode (a majority picks it, "
+            "fewer votes make it likelier)",
+            options=options,
+            chat_jid=game.chat_jid,
+            user_id="",
+            selectable=1,
+            callback=callback,
+        )
+        return msg
+    except Exception:
+        await logger(Exception)
+        return None
+
+
+async def lobby_vote(game, event, cmd, mode):
+    """vote <mode>, votes and retract in a lobby"""
+    if cmd == "votes" or (cmd == "vote" and not mode):
+        return await event.reply(game.mode_votes_text())
+    if event.from_user.id not in game.player_ids:
+        return await event.reply("Join the lobby to vote for a mode.")
+    if cmd == "retract":
+        if game.mode_votes.pop(event.from_user.id, None):
+            return await event.reply("You took back your mode vote.")
+        return await event.reply("You haven't voted for a mode.")
+    mode = mode.casefold()
+    if not gamemodes.get(mode, {}).get("roles"):
+        return await event.reply(
+            f"Mode *{mode}* not found. See `{conf.CMD_PREFIX}werewolf --mode all`."
+        )
+    game.mode_votes[event.from_user.id] = mode
+    await event.reply(f"You voted for the *{mode}* mode.")
+
+
+async def force_stop(event, args, client):
+    """[Owner | Sudo | Admin] fstop [reason]: stops the lobby or game here."""
+    game = bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
+    if not game or isinstance(game, dict):
+        return await event.reply("No werewolf game in this chat.")
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not event.chat.is_group:
+            return await event.react("🚫")
+        group_info = await client.get_group_info(event.chat.jid)
+        if not user_is_admin(user, group_info.Participants):
+            return await event.react("🚫")
+    msg = f"Game forcibly stopped by *{event.from_user.name}*"
+    msg += f" for reason: {args.strip()}." if args and args.strip() else "."
+    if game.players:
+        msg += "\n\n*Roles:*\n" + "\n".join(
+            f"- {p.name}: {p.role} ({'Alive' if p.is_alive else 'Dead'})"
+            for p in game.players.values()
+        )
+    game.stop()
+    await event.reply(msg)

@@ -52,6 +52,12 @@ class Game:
         self.day_start_time = None
 
         self.night_num = 0
+        self.day_num = 0
+        self.task = None  # the running game_loop
+        self.mode_votes = {}  # user_id: mode, from the lobby's mode poll or .vote
+        self.mode_poll_id = None
+        self.last_seen = {}  # user_id: when they last sent anything, for idle kicks
+        self.idle_warned = set()  # user_ids
         self.status_msg_id = None  # the pinned in-game status message
         self.detective_acted = False
 
@@ -60,17 +66,42 @@ class Game:
         self.night_warning = DEFAULT_NIGHT_WARNING
         self.night_timeout = DEFAULT_NIGHT_TIMEOUT
 
+    def mode_fits(self, mode):
+        data = gamemodes.get(mode, {})
+        return bool(data.get("roles")) and (
+            data.get("min_players", MIN_PLAYERS)
+            <= self.total_players
+            <= data.get("max_players", MAX_PLAYERS)
+        )
+
+    @property
+    def votable_modes(self):
+        """The modes picked by chance, which players can vote for"""
+        return [m for m, data in gamemodes.items() if data.get("chance", 0) > 0]
+
     def select_mode_by_chance(self):
+        """
+        The requested mode, else one a majority of players voted for, else one
+        picked by chance, each mode's chance raised by its share of the votes
+        """
         if self.requested_mode:
             return self.requested_mode
+        votes = {}
+        for uid, mode in self.mode_votes.items():
+            if uid in self.player_ids:
+                votes[mode] = votes.get(mode, 0) + 1
+        for mode, count in votes.items():
+            if count >= self.total_players // 2 + 1 and self.mode_fits(mode):
+                return mode
         available_modes = []
         chances = []
-        for m, data in gamemodes.items():
-            if data.get("chance", 0) > 0 and self.total_players >= data.get(
-                "min_players", MIN_PLAYERS
-            ):
+        for m in self.votable_modes:
+            if self.mode_fits(m):
                 available_modes.append(m)
-                chances.append(data["chance"])
+                chances.append(
+                    gamemodes[m]["chance"]
+                    + int(votes.get(m, 0) / self.total_players * 200)
+                )
         if not available_modes:
             return "default"
         return random.choices(available_modes, weights=chances, k=1)[0]
@@ -174,9 +205,102 @@ class Game:
         self.in_progress = True
         self.waiting = False
         self.start_time = datetime.now()
+        self.last_seen = dict.fromkeys(self.players, self.start_time)
 
-    async def send_lobby(self, message):
-        await bot.client.send_message(self.chat_jid, message)
+    async def send_lobby(self, message, mentions=False):
+        """Sends message to the group; mentions makes its @<user_id>s tags."""
+        await bot.client.send_message(
+            self.chat_jid, message, mentions_are_lids=mentions
+        )
+
+    @property
+    def able_voters(self):
+        """Living players who can vote; the injured can't"""
+        return [p for p in self.players_alive_list if not p.is_injured]
+
+    @property
+    def votes_to_lynch(self):
+        return len(self.able_voters) // 2 + 1
+
+    def tally_votes(self):
+        """{user_id voted for, or "abstain": [voters]} of today's valid votes"""
+        tally = {}
+        for p in self.able_voters:
+            target = self.get_player_by_user_id(p.vote)
+            if p.vote == "abstain" or (target and target.is_alive):
+                tally.setdefault(p.vote, []).append(p)
+        return tally
+
+    def vote_counts(self):
+        """tally_votes() as weights; impatience adds a vote, pacifism takes one"""
+        counts = {}
+        for vote, voters in self.tally_votes().items():
+            weight = sum(
+                max(
+                    0,
+                    1
+                    + ("impatience_totem" in p.other)
+                    - ("pacifism_totem" in p.other),
+                )
+                for p in voters
+            )
+            if weight:
+                counts[vote] = weight
+        return counts
+
+    def votes_text(self):
+        able = self.able_voters
+        tally = self.tally_votes()
+        abstainers = tally.pop("abstain", [])
+        msg = (
+            f"*{self.players_alive_count}* living players, "
+            f"*{self.votes_to_lynch}* votes needed to lynch, "
+            f"*{len(able)}* can vote, *{len(abstainers)}* abstained.\n"
+        )
+        if not tally:
+            return msg + "No one has voted to lynch yet."
+        msg += "*Current votes:*\n"
+        for uid, voters in sorted(tally.items(), key=lambda kv: -len(kv[1])):
+            target = self.get_player_by_user_id(uid)
+            names = ", ".join(v.name for v in voters)
+            msg += f"- {target.name} (#{target.id}): {len(voters)} ({names})\n"
+        if abstainers:
+            msg += f"- Abstain: {len(abstainers)} ({', '.join(p.name for p in abstainers)})\n"
+        return msg.rstrip()
+
+    def mode_votes_text(self):
+        votes = {}
+        for uid, mode in self.mode_votes.items():
+            if uid in self.player_ids:
+                votes.setdefault(mode, []).append(self.player_names.get(uid, "?"))
+        msg = (
+            f"*{self.total_players}* players in the lobby, "
+            f"*{self.total_players // 2 + 1}* votes choose a mode outright; "
+            "fewer only make it likelier.\n"
+        )
+        if self.requested_mode:
+            msg += f"The mode is set to *{self.requested_mode}*, so votes don't count.\n"
+        if not votes:
+            return msg + "No one has voted for a mode yet."
+        for mode, names in sorted(votes.items(), key=lambda kv: -len(kv[1])):
+            unfit = "" if self.mode_fits(mode) else " - wrong player count for it"
+            msg += f"- {mode}: {len(names)} ({', '.join(names)}){unfit}\n"
+        return msg.rstrip()
+
+    def note_activity(self, user_id):
+        """Marks a player as active, clearing an idle warning."""
+        if user_id in self.last_seen:
+            self.last_seen[user_id] = datetime.now()
+            self.idle_warned.discard(user_id)
+
+    def stop(self):
+        """Ends the lobby or game at once."""
+        self.ended = True
+        self.activity.set()  # lets the lobby manager finish
+        if self.task:
+            self.task.cancel()  # game_loop closes the game when cancelled
+        else:
+            self.close()
 
     def status_text(self):
         phase = "Day" if self.day else "Night" if self.night else "Starting"
@@ -291,6 +415,7 @@ class Game:
         if event.from_user.id not in self.player_ids:
             return await event.reply("You've not joined the game!")
         self.player_ids.remove(event.from_user.id)
+        self.mode_votes.pop(event.from_user.id, None)
         self.player_names.pop(event.from_user.id, None)
         self.player_jids.pop(event.from_user.id, None)
         self.activity.set()
@@ -311,7 +436,7 @@ class Game:
     async def status(self, event):
         if self.waiting:
             msg = f"*Werewolf Game Lobby*\n"
-            msg += f"Mode: {self.requested_mode or 'Auto (by chance)'}\n"
+            msg += f"Mode: {self.requested_mode or 'Auto (by chance and votes)'}\n"
             msg += f"Players: {self.total_players}\n"
             msg += "*Joined players:*\n"
             for p_id in self.player_ids:
