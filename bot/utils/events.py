@@ -61,6 +61,9 @@ class Event(BaseEvent):
                 self.short_name = "viewOnce"
                 self.view_once = v
                 return self._construct_media(self.view_once.message)
+            # The HD copy of a video or image comes wrapped
+            if msg.name == "associatedChildMessage":
+                return self._construct_media(v.message)
             if not msg.name.endswith("Message"):
                 continue
             s_name = msg.name.split("M")[0]
@@ -160,13 +163,19 @@ class Event(BaseEvent):
         if media := (self.audio or self.image or self.ptv or self.video):
             self.is_actual_media = True
             self.is_view_once = media.viewOnce
+        association = self._message.messageContextInfo.messageAssociation
         if self.media:
-            self.message_association = (
-                self._message.messageContextInfo.messageAssociation
-            )
+            self.message_association = association
             if self.message_association.associationType == 1:
                 self.is_album = True
                 self.album_id = self.message_association.parentMessageKey.ID
+        if association.associationType in HD_ASSOCIATIONS:
+            self.hd_parent_id = association.parentMessageKey.ID
+        elif self.is_edit and self.protocol.editedMessage.HasField(
+            "associatedChildMessage"
+        ):
+            # Some clients send the HD copy as an edit of the SD message
+            self.hd_parent_id = self.edited_id
 
         self._context_info = (
             self.media.contextInfo
@@ -226,6 +235,15 @@ class Event(BaseEvent):
         await self.client.revoke_message(self.chat.jid, self.from_user.jid, self.id)
 
     async def download(self, path: str | None = None) -> bytes | None:
+        # The quote of an HD video or image is its SD copy; the stored message
+        # gets the HD copy's media once that arrives (see store_hd_copies)
+        if (
+            self.is_quoted
+            and self.media
+            and self.media.contextInfo.pairedMediaType in SD_PARENTS
+            and (stored := await self._stored_media())
+        ):
+            return await stored.download(path)
         if not (
             self.audio or self.document or self.image or self.sticker or self.video
         ):
@@ -234,6 +252,22 @@ class Event(BaseEvent):
         if not path:
             return bytes_
         await write_binary(path, bytes_)
+
+    async def _stored_media(self) -> Event | None:
+        """This message as stored, if it has media of the same kind"""
+        from bot.utils.msg_store import get_messages
+
+        try:
+            stored = await get_messages(self.chat.id, self.id, limit=1)
+        except Exception:
+            await logger(Exception)
+            return None
+        kind = self.media and self.media.DESCRIPTOR.full_name
+        if stored and stored[0].media and (
+            not kind or stored[0].media.DESCRIPTOR.full_name == kind
+        ):
+            return stored[0]
+        return None
 
     async def edit(self, text: str | None = None, message=None) -> Event:
         msg = Message(conversation=text) if text else message
@@ -666,11 +700,21 @@ class Event(BaseEvent):
             participant_server,
             self._context_info.quotedMessage,
         )
-        return construct_event(msg, False)
+        replied = construct_event(msg, False)
+        replied.is_quoted = True
+        return replied
 
 
 POLL = None
 SEQUENTIAL_AUTO = 0
+# MessageAssociation types of the HD copies sent after an SD video or image:
+# HD_VIDEO_DUAL_UPLOAD, HD_IMAGE_DUAL_UPLOAD, HEVC_VIDEO_DUAL_UPLOAD,
+# AV1_VIDEO_DUAL_UPLOAD, STREAMED_HD_VIDEO_DUAL_UPLOAD
+HD_ASSOCIATIONS = {5, 10, 19, 21, 22}
+# ContextInfo.pairedMediaType of the SD messages that get an HD copy:
+# SD_VIDEO_PARENT, SD_IMAGE_PARENT, HEVC_VIDEO_PARENT, AV1_VIDEO_PARENT,
+# STREAMED_VIDEO_PARENT
+SD_PARENTS = {1, 3, 7, 9, 11}
 CONCURRENT_AUTO = 1
 function_dict = {CONCURRENT_AUTO: [], SEQUENTIAL_AUTO: []}
 anti_duplicate = deque(maxlen=10000)
@@ -751,6 +795,9 @@ async def on_message(client: NewAClient, message: MessageEv):
             return
         anti_duplicate.append(_id)
         bot.pending_saved_messages.append(event)
+        if event.hd_parent_id:
+            # Stored over its SD copy; handlers already saw that one
+            return
         if seq_auto := function_dict[SEQUENTIAL_AUTO]:
             for func in seq_auto:
                 try:

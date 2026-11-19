@@ -76,6 +76,10 @@ class BaseEvent(ABC):
         self.is_revoke: bool = False
         self.outgoing: bool = False
         self.album_id: str | None = None
+        # set on the HD copy WhatsApp sends after an SD video or image
+        self.hd_parent_id: str | None = None
+        # set on reply_to_message, built from the reply's quote
+        self.is_quoted: bool = False
         self.edited_id: str | None = None
         self.lid_address: bool = False
         self.revoked_id: str | None = None
