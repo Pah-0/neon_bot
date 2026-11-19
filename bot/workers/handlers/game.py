@@ -305,7 +305,8 @@ async def handle_game_command(game, event, cmd_type):
         )
 
         hit_chance = 1.0 if "sharpshooter" in player.templates else 0.8
-        # wolves intentionally miss other wolves; the werekitten is too cute to hit
+        # wolves intentionally miss other wolves; the werekitten is too cute to
+        # hit
         if (
             player.actual_team == "wolf" and target.actual_team == "wolf"
         ) or target.role == "werekitten":

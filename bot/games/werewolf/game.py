@@ -414,7 +414,9 @@ class Game:
             and target.is_alive
         ):
             if self.is_safe(target):
-                msg += f"Before dying, *{player.name}* tries to slit *{target.name}*'s throat, but fails.\n"
+                msg += f"Before dying, *{
+                    player.name}* tries to slit *{
+                    target.name}*'s throat, but fails.\n"
             else:
                 msg += (
                     f"Before dying, *{player.name}* quickly slits *{target.name}*'s throat. "

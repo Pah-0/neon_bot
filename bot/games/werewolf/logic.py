@@ -274,7 +274,8 @@ async def game_loop(game):
                 )
             if p.assassin_target:
                 target = game.get_player_by_user_id(p.assassin_target)
-                msg += f"\n\nIn your drunken stupor you have selected *{target.name}* as your target."
+                msg += f"\n\nIn your drunken stupor you have selected *{
+                    target.name}* as your target."
             if p in wolfchat and len(wolfchat) > 1:
                 msg += "\n\nYour team: " + ", ".join(
                     f"{w.name} ({w.role})" for w in wolfchat if w is not p
@@ -824,7 +825,9 @@ async def process_night(game):
         if p and p.is_alive:
             if p.is_blessed and killed.count(uid) < 2:
                 # a blessing wards off one attack
-                await game.send_pm(p, "You were attacked last night, but your blessing kept you safe.")
+                await game.send_pm(
+                    p, "You were attacked last night, but your blessing kept you safe."
+                )
                 continue
             if (
                 p.role == "lycan"
@@ -836,7 +839,9 @@ async def process_night(game):
                 await game.send_pm(p, "HOOOOOOOOOWL. You have become... a wolf!")
                 await game.wolfchat(f"{p.name} is now a *wolf*!")
                 continue
-            killed_msg += f"The dead body of *{p.name}*, a *{p.death_role}*, was found.\n"
+            killed_msg += (
+                f"The dead body of *{p.name}*, a *{p.death_role}*, was found.\n"
+            )
             killed_msg += await game.kill(p, "night")
     # the hot potato swaps identities with their (living) choice
     for potato in game.players_alive_list:
@@ -899,9 +904,7 @@ async def day_phase(game):
     ] + [
         asyncio.create_task(request_bless(game, p))
         for p in game.players_alive_list
-        if p.role == "priest"
-        and "bless_used" not in p.other
-        and "hexed" not in p.other
+        if p.role == "priest" and "bless_used" not in p.other and "hexed" not in p.other
     ]
     lynched_uid, warned = None, False
     try:
