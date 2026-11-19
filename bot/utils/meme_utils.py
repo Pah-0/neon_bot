@@ -185,8 +185,10 @@ async def random_meme(sub: str | None = None, allow_nsfw: bool = True) -> Meme:
         except NoMeme:
             raise
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            # Arctic Shift fails now and then (timeouts, 422s); the fallback covers it
-            log(e=f"Arctic Shift failed, using the fallback: {e!r}", warning=True)
+            # Arctic Shift fails now and then (timeouts, 422s); the fallback
+            # covers it
+            log(e=f"Arctic Shift failed, using the fallback: {
+                    e!r}", warning=True)
         except Exception:
             await logger(Exception)
         if not meme:
