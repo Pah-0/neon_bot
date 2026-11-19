@@ -450,6 +450,13 @@ async def auto_start_manager(event, game):
                 selectable=1,
                 callback=btn_callback,
             )
+        # keep the lobby in view; it's deleted (and so unpinned) when it ends
+        try:
+            await bot.client.pin_message(
+                event.chat.jid, bot.client.me.JID, sent[0] if sent else msg.ID, 86400
+            )
+        except Exception:
+            await logger(Exception)
         # start once nobody has joined/left for a while
         while game.waiting and len(game.player_ids) < MAX_PLAYERS:
             if not game.player_ids or game.ended:  # everyone left, or stopped
