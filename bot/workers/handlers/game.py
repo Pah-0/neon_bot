@@ -318,7 +318,8 @@ async def were_info(event, args, client):
     msg += "Lobbies auto-start after 3 minutes without joins/leaves.\n\n"
     msg += "*In-game (during the day):*\n"
     msg += f"Vote to lynch: `{conf.CMD_PREFIX}lynch <player>`\n"
-    msg += f"Detective, once per day, in PM with me: `{conf.CMD_PREFIX}id <player>` or the buttons I send\n"
+    msg += f"Detective, once per day, in PM with me: `{
+        conf.CMD_PREFIX}id <player>` or the buttons I send\n"
     msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <player>`\n"
     msg += "A player is their #number, name, @mention, or reply to their message."
     return await event.reply(msg)
