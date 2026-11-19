@@ -267,9 +267,9 @@ async def game_loop(game):
                 )
             else:
                 await game.send_lobby(
-                    "I'm not an admin here, so I can't lock the group; "
-                    "I'll delete messages from dead players and non-players instead "
-                    "(make me an admin for that too)."
+                    "I can only lock the group for a restricted game if I created it "
+                    "(its super admin), so no player can demote me. I'll delete messages "
+                    "from dead players and non-players instead (as an admin)."
                 )
         await game.send_lobby(
             f"Welcome to Werewolf! Using the *{game.mode}* game mode with *{game.total_players}* players."

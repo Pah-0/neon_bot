@@ -1,6 +1,8 @@
 """
 Restricted games lock the group: it becomes admins-only and the living
-players who aren't admins are promoted, then demoted as they die. The real
+players who aren't admins are promoted, then demoted as they die. Only a
+bot that is the group's super admin (its creator) does this, as no promoted
+player can demote it. The real
 admins are left alone (their messages are deleted while they're dead or not
 playing). What was changed is saved first, so a game cut short by a crash or
 restart is undone on startup.
@@ -23,7 +25,7 @@ async def _save():
 
 
 async def lock_group(game) -> bool:
-    """Locks the game's group; False if the bot isn't an admin there or it fails"""
+    """Locks the game's group; False if the bot isn't its super admin or it fails"""
     try:
         return await _lock_group(game)
     except Exception:
@@ -37,7 +39,9 @@ async def _lock_group(game) -> bool:
     info = await bot.client.get_group_info(game.chat_jid)
     me = bot.client.me
     my_ids = {me.JID.User, getattr(me, "LID", me.JID).User}
-    if not any(m.IsAdmin and _ids(m) & my_ids for m in info.Participants):
+    # a mere admin could be demoted by a player it promoted, and then could
+    # never give the group back
+    if not any(m.IsSuperAdmin and _ids(m) & my_ids for m in info.Participants):
         return False
     alive = {p.user_id for p in game.players_alive_list}
     promote = [m for m in info.Participants if not m.IsAdmin and _ids(m) & alive]
