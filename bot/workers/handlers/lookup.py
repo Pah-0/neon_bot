@@ -79,8 +79,12 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
             group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
             if group and bot.block_nsfw:
                 # Check for adult flags in caption
-                if ("ADULT RATED: True" in caption or "MATURE: Yes" in caption or
-                    "*RATING: Explicit*" in caption or "➤ *RATING:* Explicit" in caption):
+                if (
+                    "ADULT RATED: True" in caption
+                    or "MATURE: Yes" in caption
+                    or "*RATING: Explicit*" in caption
+                    or "➤ *RATING:* Explicit" in caption
+                ):
                     return await event.reply(
                         f"*This {what} is adult-rated and NSFW is blocked in this group.*"
                     )
