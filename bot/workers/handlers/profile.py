@@ -14,11 +14,12 @@ from bot.utils.msg_utils import (
     chat_is_allowed,
     construct_msg_and_evt,
     get_args,
+    target_user,
     user_is_allowed,
     user_is_privileged,
 )
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
-from bot.utils.msg_utils import target_user
+
 # A WhatsApp poll takes at most 12 options, as many as a showcase holds
 MAX_CHOICES = 12
 # With no room for a Done option, cards go out once the ticking stops

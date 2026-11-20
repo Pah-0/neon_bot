@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import itertools
 import json
-import re
 from inspect import getdoc
 
 from feedparser import parse as feedparse
@@ -18,13 +17,13 @@ from bot.utils.msg_utils import (
     event_handler,
     get_args,
     get_user_info,
+    target_user,
     user_is_admin,
     user_is_allowed,
     user_is_banned_by_ownr,
     user_is_owner,
     user_is_privileged,
     user_is_sudoer,
-    target_user,
 )
 from bot.utils.os_utils import PR_STATE_FILE, re_x, restart_already_handled, updater
 from bot.utils.rss_utils import schedule_rss, scheduler
