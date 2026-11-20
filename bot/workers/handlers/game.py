@@ -20,8 +20,8 @@ from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args, user_is_admin, user_is_privileged
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
-from bot.workers.handlers.manage import show_ids, target_user
-
+from bot.utils.msg_utils import target_user
+from bot.workers.handlers.manage import show_ids
 
 async def werewolf_handler(event, args, client):
     """
