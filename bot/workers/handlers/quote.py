@@ -18,7 +18,7 @@ from bot.utils.msg_utils import (
     user_is_privileged,
 )
 from bot.utils.quote_card import quote_card
-from bot.workers.handlers.wa import get_member_label
+from bot.utils.group_utils import get_member_label
 
 
 async def quote(event, args, client):

@@ -10,15 +10,15 @@ from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import clean_reply, get_args, user_is_admin, user_is_privileged
 from bot.utils.wa_markdown import looks_like_markdown, md_to_whatsapp
-from bot.workers.handlers.members import (
+from bot.utils.group_utils import (
     admin_check,
     find_member,
     protected,
     remove,
     tag,
     targets,
+    uncounted,
 )
-from bot.workers.handlers.wa import uncounted
 
 DEFAULT_WARN_LIMIT = 3
 # Links with a scheme or www., or bare domains on common TLDs (chat.whatsapp.com…);

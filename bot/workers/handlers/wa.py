@@ -111,9 +111,7 @@ from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_resp
 from bot.utils.wa_markdown import md_to_whatsapp
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
-from bot.workers.handlers.community_log import count_rejoins, log_member_changes
-from bot.workers.handlers.guard import start_captchas
-from bot.workers.handlers.members import decline_banned_request, keep_out_banned
+from bot.utils.group_utils import count_rejoins, log_member_changes, decline_banned_request, keep_out_banned, start_captchas
 
 Image.MAX_IMAGE_PIXELS = 400_000_000
 
@@ -2237,13 +2235,7 @@ async def purge_messages(event, args, client):
 # ProtocolMessage type sent when a member sets or clears their group tag
 MEMBER_LABEL_CHANGE = 30
 
-
-def member_label_keys(user) -> set:
-    """Every id a member's tag is saved under (phone number and LID forms)"""
-    return {
-        k for k in (user.id, getattr(user, "hid", None), getattr(user, "ph", None)) if k
-    }
-
+from bot.utils.group_utils import get_member_label, member_label_keys
 
 async def rec_member_label(event, args, client):
     """
@@ -2378,14 +2370,6 @@ async def set_bot_tag(event, args, client):
         await event.react("❌")
 
 
-def get_member_label(chat_id, user) -> str:
-    labels = bot.group_dict.get(chat_id, {}).get("member_labels", {})
-    for key in member_label_keys(user):
-        if labels.get(key):
-            return labels[key]
-    return ""
-
-
 async def rec_msg_ranking(event, args, client):
     """
     Helper for the message leaderboard
@@ -2410,39 +2394,7 @@ async def rec_msg_ranking(event, args, client):
     except Exception:
         await logger(Exception)
 
-
-# Messages already taken off the leaderboard, so a deletion the bot makes
-# isn't taken off again if its revoke comes back as a message
-uncounted = LimitedDict(1000)
-
-
-def uncount_messages(msgs: list[Event]):
-    """
-    Takes deleted messages (as stored) off their senders' message counts,
-    the ones counted this week
-    """
-    for msg in msgs:
-        key = (msg.chat.id, msg.id)
-        if key in uncounted or not (msg.text or msg.caption or msg.audio):
-            continue
-        uncounted[key] = True
-        if not (ts := msg.message.Info.Timestamp):
-            continue
-        if not same_week(datetime.datetime.fromtimestamp(ts / 1000), 0, 4):
-            continue
-        group = bot.group_dict.get(msg.chat.id, {})
-        if (msg_rank := group.get("msg_ranking")) is None:
-            continue
-        user = msg.user.id
-        if msg_rank.get(user, 0) <= 0:
-            continue
-        # Off the leaderboard at 0
-        msg_rank[user] -= 1
-        if msg_rank[user] <= 0:
-            msg_rank.pop(user)
-        msg_rank["total"] = max(msg_rank.get("total", 0) - 1, 0)
-        bot.msg_leaderboard_counter += 1
-
+from bot.utils.group_utils import uncount_messages, uncounted
 
 async def msg_ranking(event, args, client):
     """

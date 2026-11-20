@@ -12,13 +12,7 @@ from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args
 from bot.workers.auto.schedule import scheduler2
-from bot.workers.handlers.members import admin_check, find_member, other_ids, remove
-
-CAPTCHA_MINUTES = 5
-CAPTCHA_TRIES = 3
-# chat id -> {user id: pending captcha}, for members who joined and haven't
-# solved theirs; kept in memory, so a restart lets them through
-captchas: dict[str, dict[str, dict]] = {}
+from bot.utils.group_utils import admin_check, find_member, other_ids, remove, start_captchas, captchas, CAPTCHA_TRIES, finish_captcha
 
 
 def settings(chat_id: str) -> dict:
@@ -198,80 +192,7 @@ def make_captcha() -> tuple[bytes, str]:
     return out.getvalue(), str(code)
 
 
-async def start_captchas(gc_msg, skip: set):
-    """
-    Sends a captcha to members who just joined by themselves, where the
-    captcha is on; skip holds ids already dealt with (banned)
-    """
-    chat_id = gc_msg.JID.User
-    config = bot.group_dict.get(chat_id, {}).get("captcha") or {}
-    if not config.get("on"):
-        return
-    # Added by someone else, or approved by an admin: they vouched for them
-    if gc_msg.Sender.User and all(gc_msg.Sender.User != j.User for j in gc_msg.Join):
-        return
-    minutes = config.get("minutes", CAPTCHA_MINUTES)
-    for joined in gc_msg.Join:
-        if joined.User in skip:
-            continue
-        try:
-            png, code = await asyncio.to_thread(make_captcha)
-            sent = await bot.client.send_image(
-                gc_msg.JID,
-                png,
-                f"Welcome @{joined.User}! Send the code in this picture within "
-                f"{minutes} minutes to stay in the group.",
-                mentions_are_lids=joined.Server == "lid",
-            )
-        except Exception:
-            await logger(Exception)
-            continue
-        pending = {
-            "code": code,
-            "tries": CAPTCHA_TRIES,
-            "jid": joined,
-            "message": getattr(sent, "ID", None),
-        }
-        for user in await other_ids(joined.User):
-            captchas.setdefault(chat_id, {})[user] = pending
-        asyncio.create_task(expire_captcha(gc_msg.JID, joined.User, pending, minutes))
-
-
-async def finish_captcha(chat_jid, pending: dict, kick: bool, note: str):
-    """Ends a pending captcha: deletes it, removes the member if kick"""
-    group = captchas.get(chat_jid.User, {})
-    for user in [u for u, p in group.items() if p is pending]:
-        group.pop(user, None)
-    if pending.get("message"):
-        try:
-            await bot.client.revoke_message(
-                chat_jid, bot.client.me.JID, pending["message"]
-            )
-        except Exception:
-            pass
-    joined = pending["jid"]
-    if kick:
-        try:
-            info = await bot.client.get_group_info(chat_jid)
-            if member := find_member(joined.User, info.Participants):
-                await remove(bot.client, chat_jid, [member])
-        except Exception:
-            await logger(Exception)
-    await bot.client.send_message(
-        chat_jid, f"@{joined.User} {note}", mentions_are_lids=joined.Server == "lid"
-    )
-
-
-async def expire_captcha(chat_jid, user: str, pending: dict, minutes: int):
-    await asyncio.sleep(minutes * 60)
-    if captchas.get(chat_jid.User, {}).get(user) is pending:
-        await finish_captcha(
-            chat_jid,
-            pending,
-            True,
-            "*didn't solve the captcha in time and was removed.*",
-        )
-
+from bot.utils.group_utils import start_captchas, captchas, CAPTCHA_TRIES, finish_captcha
 
 async def captcha_gate(event: Event, _, client):
     """
