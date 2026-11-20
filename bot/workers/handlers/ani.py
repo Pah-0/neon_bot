@@ -1,5 +1,6 @@
 import anilist
 
+from bot import bot
 from bot.utils.ani_utils import airing_anim, anime_arch
 from bot.utils.buttons import choose, sender_ids
 from bot.utils.log_utils import logger
@@ -29,6 +30,13 @@ async def airing(event, args, client):
             if not args:
                 return await event.reply("*Couldn't find any anime with that name.*")
         img, out = await airing_anim(args)
+        # NSFW check for groups with NSFW blocking enabled
+        group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
+        if group and bot.block_nsfw:
+            if "ADULT RATED: True" in out or "➤ *ADULT RATED:* True" in out:
+                return await event.reply(
+                    "*This anime is adult-rated and NSFW is blocked in this group.*"
+                )
         await event.reply_photo(img, out)
     except Exception as e:
         await logger(Exception)
@@ -63,6 +71,13 @@ async def anime(event, args, client):
             if not args:
                 return await event.reply("*Couldn't find any anime with that name.*")
         img, out = await anime_arch(args, arg)
+        # NSFW check for groups with NSFW blocking enabled
+        group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
+        if group and bot.block_nsfw:
+            if "ADULT RATED: True" in out or "➤ *ADULT RATED:* True" in out:
+                return await event.reply(
+                    "*This anime is adult-rated and NSFW is blocked in this group.*"
+                )
         await event.reply_photo(img, out)
     except Exception as e:
         await logger(Exception)

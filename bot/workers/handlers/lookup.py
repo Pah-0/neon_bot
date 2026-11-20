@@ -1,6 +1,7 @@
 import re
 from inspect import getdoc
 
+from bot import bot
 from bot.utils.buttons import choose, sender_ids
 from bot.utils.log_utils import logger
 from bot.utils.lookup_utils import (
@@ -74,6 +75,19 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
                 return await event.reply("Time out!")
         async with event.react("⏳"):
             image, caption = await info(key)
+            # NSFW check for groups with NSFW blocking enabled
+            group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
+            if group and bot.block_nsfw:
+                # Check for adult flags in caption
+                if (
+                    "ADULT RATED: True" in caption
+                    or "MATURE: Yes" in caption
+                    or "*RATING: Explicit*" in caption
+                    or "➤ *RATING:* Explicit" in caption
+                ):
+                    return await event.reply(
+                        f"*This {what} is adult-rated and NSFW is blocked in this group.*"
+                    )
             # A missing or unsendable picture leaves just the caption
             photo = await get_photo(image) if image else None
             if photo:
