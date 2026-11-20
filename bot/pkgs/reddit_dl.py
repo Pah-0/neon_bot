@@ -26,6 +26,7 @@ from .twitter_dl import load_netscape_cookies
 _log_ = logging.getLogger(__name__)
 
 ARCTIC_SHIFT_API = "https://arctic-shift.photon-reddit.com/api/posts/ids"
+ARCTIC_SHIFT_COMMENTS_API = "https://arctic-shift.photon-reddit.com/api/comments/ids"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
@@ -42,6 +43,11 @@ SHORT_RE = re.compile(r"https?://redd\.it/(?P<id>[a-z0-9]+)")
 SHARE_RE = re.compile(r"https?://(?:[\w-]+\.)?reddit\.com/r/[\w-]+/s/[\w-]+")
 VIDEO_RE = re.compile(r"https?://v\.redd\.it/(?P<id>[a-z0-9]+)")
 IMAGE_RE = re.compile(r"https?://i\.redd\.it/[\w.-]+")
+# Comment links: /comments/post_id/comment/comment_id/
+COMMENT_RE = re.compile(
+    r"https?://(?:[\w-]+\.)?reddit\.com/(?:(?:r|u|user)/[\w-]+/)?"
+    r"comments/[a-z0-9]+/comment/(?P<id>[a-z0-9]+)"
+)
 
 
 @dataclass
@@ -57,10 +63,13 @@ class DownloadResult:
 
 def is_valid_reddit_url(url: str) -> bool:
     """
-    True for a post, gallery, share, redd.it or v.redd.it link (resolve a
-    share link with resolve_share_url first)
+    True for a post, gallery, share, redd.it, v.redd.it or comment link
+    (resolve a share link with resolve_share_url first)
     """
-    return any(r.match(url) for r in (POST_RE, SHARE_RE, SHORT_RE, VIDEO_RE))
+    return any(
+        r.match(url)
+        for r in (POST_RE, SHARE_RE, SHORT_RE, VIDEO_RE, COMMENT_RE)
+    )
 
 
 def is_reddit_share_url(url: str) -> bool:
@@ -107,6 +116,38 @@ async def _get_post(session: aiohttp.ClientSession, post_id: str) -> dict:
             " in a few minutes)"
         )
     return posts[0]
+
+
+async def _get_comment(session: aiohttp.ClientSession, comment_id: str) -> dict:
+    async with session.get(ARCTIC_SHIFT_COMMENTS_API, params={"ids": comment_id}) as resp:
+        if resp.status >= 400:
+            try:
+                error = (await resp.json()).get("error")
+            except Exception:
+                error = None
+            raise RuntimeError(f"Arctic Shift: {
+                error or f'HTTP {
+                    resp.status}'}")
+        comments = (await resp.json()).get("data") or []
+    if not comments:
+        raise RuntimeError(
+            "Comment not found in Arctic Shift's archive (if it's new, try again"
+            " in a few minutes)"
+        )
+    return comments[0]
+
+
+def _comment_media(comment: dict) -> List[tuple[str, str]]:
+    """Extract media from a comment's body (can contain image/gif/video links)"""
+    body = comment.get("body", "")
+    items = []
+    # Check for i.redd.it image/gif links in the body
+    for m in IMAGE_RE.finditer(body):
+        items.append(("image", m.group(0)))
+    # Check for v.redd.it video links in the body
+    for m in VIDEO_RE.finditer(body):
+        items.append(("video", m.group("id")))
+    return items
 
 
 def _gallery(post: dict) -> List[tuple[str, str]]:
@@ -266,10 +307,10 @@ async def download_reddit(
     progress_callback: Optional[Callable[[int, int, str], Awaitable[None]]] = None,
 ) -> List[DownloadResult]:
     """
-    Download the video, image(s) or gallery of a Reddit post.
+    Download the video, image(s) or gallery of a Reddit post or comment.
 
     Args:
-        url:        Post, gallery, redd.it or v.redd.it link.
+        url:        Post, gallery, redd.it, v.redd.it or comment link.
         output_dir: Directory to save the file(s).
         quiet:      Suppress console output.
         progress_callback:
@@ -285,6 +326,13 @@ async def download_reddit(
         if m := VIDEO_RE.match(url):
             # Where it's posted is only known to reddit.com
             caption, media = "", [("video", m.group("id"))]
+        elif m := COMMENT_RE.match(url):
+            comment_id = m.group("id")
+            comment = await _get_comment(session, comment_id)
+            media = _comment_media(comment)
+            caption = f"Comment by u/{comment.get('author', 'unknown')} in r/{comment.get('subreddit', 'unknown')}"
+            if not media:
+                raise RuntimeError("This comment has no Reddit-hosted media")
         else:
             if not (m := POST_RE.match(url) or SHORT_RE.match(url)):
                 raise ValueError(f"Not a supported Reddit URL: {url}")
