@@ -1,15 +1,20 @@
 import asyncio
-import random
 import re
 import time
 import uuid
+from datetime import datetime
 
 from bot import sudo_btn_lock
 from bot.config import bot, conf
 from bot.games.register import register_for_a_game
 from bot.games.werewolf.defaults import MAX_PLAYERS, MIN_PLAYERS
 from bot.games.werewolf.game import Game
-from bot.games.werewolf.logic import detective_identify, game_loop
+from bot.games.werewolf.logic import (
+    detective_identify,
+    game_loop,
+    redirect,
+    shot_outcome,
+)
 from bot.games.werewolf.roles import gamemodes
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
@@ -30,7 +35,11 @@ async def werewolf_handler(event, args, client):
         --start : start the lobby now (needs the mode's minimum players)
         --mode <mode> : set the lobby's mode, creating a lobby if none exists (default: chosen by chance)
         --mode all : list available modes
-        -r : restricted mode; while the game runs, messages from dead players and non-players are deleted
+        -r : restricted mode: while the game runs, only living players can talk; the group
+            goes admins-only and living players who aren't admins are made admins until they
+            die or the game ends (needs the bot to be the group's super admin, its creator;
+            otherwise dead players' and non-players' messages are deleted instead). Messages from dead or
+            non-playing real admins are deleted. (Dead players' messages are always deleted.)
             (can be combined with -j, --start or --mode, or used alone on an existing lobby)
 
     In-game commands (alive players only):
@@ -39,11 +48,13 @@ async def werewolf_handler(event, args, client):
         id <player> : detective only, in PM with the bot, learn a player's role, once per day
             (the detective also gets buttons for it each day; outside that, .id shows WhatsApp ids)
         shoot <player> : gunner/sharpshooter only, shoot a player during the day
+        myrole : I send you your role (and totem, lovers, targets) in PM again
         vote <player> : same as lynch; with no player, shows the votes
         votes : show today's lynch votes (in a lobby: the mode votes)
         retract : take back your lynch vote (in a lobby: your mode vote)
         abstain : vote to lynch no one today (not on the first day, nor in evilvillage)
-    A majority of the players able to vote lynches at once; when the day runs out,
+    Each day starts with 1-3 minutes of discussion (10s a living player) before
+    voting opens. A majority of the players able to vote lynches at once; when the day runs out,
     the most votes win, and no one is lynched on a tie.
     Players who send nothing for 5 minutes are warned, then killed a minute later.
 
@@ -55,6 +66,8 @@ async def werewolf_handler(event, args, client):
     cmd = event.text.split()[0].removeprefix(conf.CMD_PREFIX).casefold()
     if cmd == "fstop":
         return await force_stop(event, args, client)
+    if cmd == "myrole":
+        return await my_role(event)
     if cmd in ("vote", "votes", "retract") and (
         game := bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
     ):
@@ -208,6 +221,22 @@ async def find_target(game, event, target_str):
     return game.get_player_by_user_id(lid) or game.get_player_by_user_id(number)
 
 
+async def my_role(event):
+    """Sends a player their role (and totem, lovers, targets...) in PM."""
+    games = bot.current_games_dict.get("werewolf", {})
+    if event.chat.is_group:
+        games = {event.chat.id: games.get(event.chat.id)}
+    for game in games.values():
+        if not game or isinstance(game, dict) or game.waiting:
+            continue
+        if player := game.get_player_by_user_id(event.from_user.id):
+            await game.send_pm(player, game.role_text(player))
+            if event.chat.is_group:
+                await event.react("📩")
+            return
+    await event.reply("You're not in a running werewolf game.")
+
+
 def detective_game(user_id):
     """The running game in which user_id is a living detective"""
     for game in bot.current_games_dict.get("werewolf", {}).values():
@@ -236,6 +265,11 @@ async def handle_game_command(game, event, cmd_type):
     if voting:
         if not game.day:
             return await event.reply("You can only vote during the day!")
+        if not game.voting_open:
+            wait = (game.voting_opens_at - datetime.now()).total_seconds()
+            return await event.reply(
+                f"Voting opens in *{max(1, int(wait))}s*; discuss who to lynch first."
+            )
         if player.is_injured:
             return await event.reply("You are injured and unable to vote.")
 
@@ -299,37 +333,49 @@ async def handle_game_command(game, event, cmd_type):
         if not target or not target.is_alive:
             return await event.reply("Invalid target.")
 
-        player.bullet_count -= 1
-        await game.send_lobby(
-            f"*{player.name}* takes out a gun and shoots at *{target.name}*!"
-        )
+        if target is player:
+            return await event.reply("You are holding it the wrong way.")
+        if "hexed" in player.other:
+            return await event.reply(
+                "You have been silenced, and are unable to use any special powers."
+            )
 
-        hit_chance = 1.0 if "sharpshooter" in player.templates else 0.8
-        # wolves intentionally miss other wolves; the werekitten is too cute to
-        # hit
-        if (
-            player.actual_team == "wolf" and target.actual_team == "wolf"
-        ) or target.role == "werekitten":
-            hit_chance = 0
-        if random.random() < hit_chance:
-            if target.actual_team == "wolf":
-                extra = await game.kill(target, "shot")
-                await game.send_lobby(
-                    f"Bullseye! *{target.name}* was a *{target.death_role}* and has been shot dead.\n{extra}"
-                )
-            else:
-                if random.random() < 0.5:
-                    extra = await game.kill(target, "shot")
-                    await game.send_lobby(
-                        f"Oh no! *{target.name}* was an innocent *{target.death_role}* but has been shot dead.\n{extra}"
-                    )
-                else:
-                    target.is_injured = True
-                    await game.send_lobby(
-                        f"*{target.name}* has been injured by the shot!"
-                    )
+        target = redirect(game, player, target)
+        player.bullet_count -= 1
+        outcome = shot_outcome(player, target)
+        if outcome in ("injure", "killvictim", "killwolf"):
+            msg = f"*{player.name}* shoots *{target.name}* with a bullet!\n\n"
         else:
-            await game.send_lobby("The shot missed!")
+            msg = ""
+        dead = None
+        if outcome == "miss":
+            msg += f"*{player.name}* is a lousy shooter and missed!"
+        elif outcome == "killwolf":
+            msg += f"*{target.name}* is a *{target.death_role}* and is dying from the silver bullet!"
+            dead = target
+        elif outcome == "suicide":
+            msg += (
+                f"Oh no! *{player.name}*'s gun was poorly maintained and has exploded! "
+                f"The village mourns a *gunner-{player.death_role}*."
+            )
+            dead = player
+        elif outcome == "killvictim":
+            msg += (
+                f"*{target.name}* is not a wolf but was fatally injured. "
+                f"The village has sacrificed a *{target.death_role}*."
+            )
+            dead = target
+        else:
+            msg += (
+                f"*{target.name}* is a villager and was injured. "
+                "Luckily the injury is minor and will heal after a day of rest."
+            )
+            target.is_injured = True
+        if dead:
+            msg += "\n" + await game.kill(dead, "shot")
+        await game.send_lobby(msg.rstrip())
+        if dead:
+            await game.check_traitor()
         await game.update_status()
 
 
@@ -349,12 +395,13 @@ async def werewolf_restriction_handler(client, event):
         return
     current_games = bot.current_games_dict.get("werewolf", {})
     game = current_games.get(event.chat.id)
-    if not game or isinstance(game, dict) or game.waiting or not game.restricted:
+    if not game or isinstance(game, dict) or game.waiting:
         return
     if game.ended or not game.players:
         return
     player = game.get_player_by_user_id(event.from_user.id)
-    if not player or not player.is_alive:
+    # the dead don't talk; restricted games also silence non-players
+    if (player and not player.is_alive) or (not player and game.restricted):
         try:
             await event.delete()
         except Exception:
@@ -370,18 +417,21 @@ async def were_info(event, args, client):
     msg += f"To start now: `{conf.CMD_PREFIX}werewolf --start`\n"
     msg += f"To set mode: `{conf.CMD_PREFIX}werewolf --mode <mode>`\n"
     msg += f"To see modes: `{conf.CMD_PREFIX}werewolf --mode all`\n"
-    msg += "Restricted mode (deletes messages from dead/non-players): add `-r` to `-j`, `--start` or `--mode`\n"
+    msg += "Dead players' messages are deleted while a game runs (I need to be an admin).\n"
+    msg += "Restricted mode (only living players can talk: the group goes admins-only and they're made admins until they die; I must have created the group): add `-r` to `-j`, `--start` or `--mode`\n"
     msg += "Lobbies auto-start after 3 minutes without joins/leaves.\n\n"
     msg += "*In-game (during the day):*\n"
     msg += f"Vote to lynch: `{conf.CMD_PREFIX}lynch <player>`\n"
     msg += f"Detective, once per day, in PM with me: `{
         conf.CMD_PREFIX}id <player>` or the buttons I send\n"
     msg += f"Gunner/sharpshooter: `{conf.CMD_PREFIX}shoot <player>`\n"
+    msg += f"Your role again, in PM: `{conf.CMD_PREFIX}myrole`\n"
     msg += f"See or take back votes: `{
         conf.CMD_PREFIX}votes`, `{
         conf.CMD_PREFIX}retract`\n"
     msg += f"Lynch no one: `{conf.CMD_PREFIX}abstain` (not on the first day)\n"
     msg += "A player is their #number, name, @mention, or reply to their message.\n"
+    msg += "Each day starts with 1-3 minutes of discussion before voting opens.\n"
     msg += "A majority lynches at once; when the day ends, the most votes win (none on a tie).\n"
     msg += (
         "Players silent for 5 minutes are warned, then found dead a minute later.\n\n"
@@ -450,6 +500,13 @@ async def auto_start_manager(event, game):
                 selectable=1,
                 callback=btn_callback,
             )
+        # keep the lobby in view; it's deleted (and so unpinned) when it ends
+        try:
+            await bot.client.pin_message(
+                event.chat.jid, bot.client.me.JID, sent[0] if sent else msg.ID, 86400
+            )
+        except Exception:
+            await logger(Exception)
         # start once nobody has joined/left for a while
         while game.waiting and len(game.player_ids) < MAX_PLAYERS:
             if not game.player_ids or game.ended:  # everyone left, or stopped

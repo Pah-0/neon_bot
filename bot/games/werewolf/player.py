@@ -27,6 +27,8 @@ class Player:
 
         # Specific role variables
         self.totem = ""  # Totem to give (Shaman)
+        self.totem_target = ""  # who the wolf shaman gives it to
+        self.observe_target = ""  # who the werecrow watches
         self.bullet_count = 0
         self.last_target = ""
         self.loves = []  # List of user_ids

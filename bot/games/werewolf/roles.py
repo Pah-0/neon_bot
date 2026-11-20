@@ -5,13 +5,12 @@ roles = {
     "wolf": [
         "wolf",
         "wolves",
-        "Your job is to kill all of the villagers. Type `kill <player>` in private message to kill them.",
+        "Your job is to kill all of the villagers. Each night, i'll send you buttons in private message to vote on who to kill.",
     ],
     "werecrow": [
         "wolf",
         "werecrows",
-        "You are part of the wolfteam. Use `observe <player>` during the night to see if they were in bed or not. "
-        "You may also use `kill <player>` to kill them.",
+        "You are part of the wolfteam. Each night, i'll send you buttons in private message to vote on who to kill, and to observe someone and learn whether they were in bed.",
     ],
     "wolf cub": [
         "wolf",
@@ -22,17 +21,12 @@ roles = {
     "werekitten": [
         "wolf",
         "werekittens",
-        "You are like a normal wolf, except due to your cuteness, you are seen as a villager "
-        "and gunners will always miss when they shoot you. Use `kill <player>` in private message "
-        "to vote to kill <player>.",
+        "You are like a normal wolf, except due to your cuteness, you are seen as a villager and gunners will always miss when they shoot you. Each night, i'll send you buttons in private message to vote on who to kill.",
     ],
     "wolf shaman": [
         "wolf",
         "wolf shamans",
-        "You are part of the wolfteam. You may use `kill <player>` to kill a villager. You can also select "
-        "a player to receive a totem each night by using `give <player>.` You may give yourself a totem, "
-        "but you may not give the same player a totem two nights in a row. If you do not give the totem "
-        "to anyone, it will be given to a random player.",
+        "You are part of the wolfteam. Each night, I'll tell you your totem, and i'll send you buttons in private message to vote on who to kill and to choose who receives your totem (you may choose yourself, but not the same player two nights in a row; an ungiven totem goes to a random player).",
     ],
     "traitor": [
         "wolf",
@@ -43,8 +37,7 @@ roles = {
     "sorcerer": [
         "wolf",
         "sorcerers",
-        "You may use `observe <player>` in pm during the night to observe someone and determine if they "
-        "are the seer, oracle, or augur. You are seen as a villager; only detectives can reveal your true identity.",
+        "Each night, i'll send you buttons in private message to observe someone and learn whether they are the seer, oracle, or augur. You are seen as a villager; only detectives can reveal your true identity.",
     ],
     "cultist": [
         "wolf",
@@ -54,43 +47,38 @@ roles = {
     "seer": [
         "villager",
         "seers",
-        "Your job is to detect the wolves; you may have a vision once per night. Type `see <player>` in private message to see their role.",
+        "Your job is to detect the wolves. Each night, i'll send you buttons in private message to choose someone and see their role.",
     ],
     "oracle": [
         "villager",
         "oracles",
-        "Your job is to detect the wolves; you may have a vision once per night. Type `see <player>` in private message to see whether or not they are a wolf.",
+        "Your job is to detect the wolves. Each night, i'll send you buttons in private message to choose someone and see whether or not they are a wolf.",
     ],
     "shaman": [
         "villager",
         "shamans",
-        "You select a player to receive a totem each night by using `give <player>`. You may give a totem to yourself, but you may not give the same"
-        " person a totem two nights in a row. If you do not give the totem to anyone, it will be given to a random player. "
-        "To see your current totem, use the command `myrole`.",
+        "Each night, I'll tell you your totem, and i'll send you buttons in private message to choose who receives it. You may give a totem to yourself, but not to the same player two nights in a row. If you don't choose, it goes to a random player. To see your current totem again, use the myrole command.",
     ],
     "harlot": [
         "villager",
         "harlots",
-        "You may spend the night with one player each night by using `visit <player>`. If you visit a victim of a wolf, or visit a wolf, "
-        "you will die. You may visit yourself to stay home.",
+        "Each night, i'll send you buttons in private message to choose who to spend the night with. If you visit a victim of a wolf, or visit a wolf, you will die. Choose yourself, or Pass, to stay home.",
     ],
     "hunter": [
         "villager",
         "hunters",
-        "Your job is to help kill the wolves. Once per game, you may kill another player using `kill <player>`. "
-        "If you do not wish to kill anyone tonight, use `pass` instead.",
+        "Your job is to help kill the wolves. Once per game, you may kill another player: each night, i'll send you buttons in private message, or Pass to wait.",
     ],
     "augur": [
         "villager",
         "augurs",
-        "Your job is to detect the wolves; you may have a vision once per night. Type `see <player>` in private message to see the aura they exude."
-        " Blue is villager, grey is neutral, and red is wolf.",
+        "Your job is to detect the wolves. Each night, i'll send you buttons in private message to choose someone and see the aura they exude. Blue is villager, grey is neutral, and red is wolf.",
     ],
     "detective": [
         "villager",
         "detectives",
         "Your job is to determine all of the wolves and traitors. Once each day, you may pick a player from the buttons I send you in private message "
-        "(or send me `id <player>` there) to determine their true identity. However you risk a {}% chance of revealing your role to the wolves every time you use your ability.".format(
+        "(or use the id command there) to determine their true identity. However you risk a {}% chance of revealing your role to the wolves every time you use your ability.".format(
             int(DETECTIVE_REVEAL_CHANCE * 100)
         ),
     ],
@@ -98,9 +86,7 @@ roles = {
     "crazed shaman": [
         "neutral",
         "crazed shamans",
-        "You select a player to receive a random totem each night by using `give <player>`. You may give a totem to yourself, "
-        "but you may not give the same person a totem two nights in a row. If you do not give the totem to anyone, "
-        "it will be given to a random player. You win if you are alive by the end of the game.",
+        "Each night, I'll tell you your random totem, and i'll send you buttons in private message to choose who receives it. You may give a totem to yourself, but not to the same player two nights in a row. If you don't choose, it goes to a random player. You win if you are alive by the end of the game.",
     ],
     "fool": [
         "neutral",
@@ -116,30 +102,23 @@ roles = {
         "template",
         "gunners",
         (
-            "This template gives the player a gun. Type `shoot <player>` in group during the day to shoot <player>."
-            "If you are a villager and shoot a wolf, they will die. Otherwise, there is a chance of killing them, injuring "
-            "them, or the gun exploding. If you are a wolf and shoot at a wolf, you will intentionally miss."
+            "This template gives the player a gun. During the day, use the shoot command in the group to shoot a player. If you are a villager and shoot a wolf, they will die. Otherwise, there is a chance of killing them, injuring them (injured players can't vote that day), missing, or the gun exploding. If you are a wolf and shoot at a wolf, you will intentionally miss. If the wolves kill you, you may shoot one of them, and a wolf may find your gun."
         ),
     ],
     "assassin": [
         "template",
         "assassins",
-        "Choose a target with `target <player>`. If you die you will take out your target with you. If your target dies you may choose another one. "
-        "Wolves and info-obtaining roles (such as seer and oracle) may not be assassin.",
+        "I'll send you buttons in private message to choose a target. If you die, you take your target with you. If your target dies, you may choose another one. Wolves and info-obtaining roles (such as seer and oracle) may not be assassin.",
     ],
     "matchmaker": [
         "villager",
         "matchmakers",
-        "You can select two players to be lovers with `choose <player1> and <player2>`."
-        " If one lover dies, the other will as well. You may select yourself as one of the lovers."
-        " You may only select lovers during the first night."
-        " If you do not select lovers, they will be randomly selected and you will not be told who they are (unless you are one of them).",
+        "On the first night, I'll send you a poll in private message: select two players to be lovers, then Confirm. If one lover dies, the other will as well. You may select yourself as one of the lovers. If you don't choose, lovers are picked at random and you aren't told who they are (unless you are one of them).",
     ],
     "guardian angel": [
         "villager",
         "guardian angels",
-        "Your job is to protect the villagers. Use `guard <player>` in private message during night to protect "
-        "them from dying. You may protect yourself, however you may not guard the same player two nights in a row.",
+        "Your job is to protect the villagers. Each night, i'll send you buttons in private message to choose someone to protect from dying. You may protect yourself, but you may not guard the same player two nights in a row.",
     ],
     "jester": [
         "neutral",
@@ -164,23 +143,22 @@ roles = {
     "vengeful ghost": [
         "neutral",
         "vengeful ghosts",
-        "Your soul will never be at rest. If you are killed during the game, you will swear eternal revenge upon team that killed you."
-        " Use `kill <player>` once per night after dying to kill an alive player. You only win if the team you swore revenge upon loses.",
+        "Your soul will never be at rest. If you are killed during the game, you will swear eternal revenge upon the team that killed you. Each night after dying, i'll send you buttons in private message to choose a living player of that team to kill. You only win if the team you swore revenge upon loses.",
     ],
     "priest": [
         "villager",
         "priests",
-        "Once per game during the day, you may bless someone with `bless <player>` to prevent them from being killed. Furthermore, you may consecrate the dead during the day with `consecrate <player>` to settle down restless spirits and prevent the corpse from rising as undead that night; doing so removes your ability to participate in the vote that day.",
+        "Once per game, during the day, you may bless someone to keep them from being killed: i'll send you buttons in private message each day until you use it. A blessed player survives one attack each night.",
     ],
     "doomsayer": [
         "wolf",
         "doomsayers",
-        "You can see how bad luck will befall someone at night by using `see <player>` on them. You may also use `kill <player>` to kill a villager.",
+        "You are part of the wolfteam. Each night, i'll send you buttons in private message to vote on who to kill, and to choose someone bad luck befalls: they may die that night, fall ill and be unable to vote or use powers the next day, or turn into a wolf the night after.",
     ],
     "succubus": [
         "neutral",
         "succubi",
-        "You may entrance someone and make them follow you by visiting them at night. If all alive players are entranced, you win. Use `visit <player>` to visit a player or `pass` to stay home. If you visit the victim of the wolves, you will die.",
+        "You may entrance someone and make them follow you by visiting them at night. If all alive players are entranced, you win. Each night, i'll send you buttons in private message to choose who to visit, or Pass to stay home. If you visit the victim of the wolves, you will die.",
     ],
     "mayor": [
         "template",
@@ -201,22 +179,22 @@ roles = {
     "hag": [
         "wolf",
         "hags",
-        "You can hex someone to prevent them from using any special powers they may have during the next day and night. Use `hex <player>` to hex them. Only detectives can reveal your true identity, seers will see you as a regular villager.",
+        "Each night, i'll send you buttons in private message to hex someone, preventing them from using any special powers during the next day and night. Only detectives can reveal your true identity; seers will see you as a regular villager.",
     ],
     "bodyguard": [
         "villager",
         "bodyguards",
-        "It is your job to protect the villagers. If you guard a victim, you will sacrifice yourself to save them. Use `guard <player>` to guard a player or `pass` to not guard anyone tonight.",
+        "It is your job to protect the villagers. If you guard a victim, you will sacrifice yourself to save them. Each night, i'll send you buttons in private message to choose who to guard, or Pass to guard no one.",
     ],
     "piper": [
         "neutral",
         "pipers",
-        "You can select up to two players to charm each night. The charmed players will know each other, but not who charmed them. You win when all other players are charmed. Use `charm <player1> and <player2>` to select the players to charm, or `charm <player>` to charm just one player.",
+        "You can select up to two players to charm each night. The charmed players will know each other, but not who charmed them. You win when all other players are charmed. Each night, I'll send you a poll in private message: select one or two players, then Confirm.",
     ],
     "warlock": [
         "wolf",
         "warlocks",
-        "Each night you can curse someone with `curse <player>` to turn them into a cursed villager, so the seer sees them as wolf. Act quickly, as your curse applies as soon as you cast it! Only detectives can reveal your true identity, seers will see you as a regular villager.",
+        "Each night, i'll send you buttons in private message to curse someone, turning them into a cursed villager whom the seer sees as a wolf. Your curse applies as soon as you cast it! Only detectives can reveal your true identity; seers will see you as a regular villager.",
     ],
     "mystic": [
         "villager",
@@ -226,7 +204,7 @@ roles = {
     "wolf mystic": [
         "wolf",
         "wolf mystics",
-        "Each night you will sense the number of villagers with a power that oppose you. You can also use `kill <player>` to kill a villager.",
+        "Each night you will sense the number of villagers with a power that oppose you, and i'll send you buttons in private message to vote with the wolves on who to kill.",
     ],
     "mad scientist": [
         "villager",
@@ -236,7 +214,7 @@ roles = {
     "clone": [
         "neutral",
         "clones",
-        "You can select someone to clone with `clone <player>`. If that player dies, you become their role. You may only clone someone during the first night.",
+        "On the first night, i'll send you buttons in private message to choose someone to clone. If that player dies, you become their role.",
     ],
     "lycan": [
         "neutral",
@@ -251,12 +229,12 @@ roles = {
     "turncoat": [
         "neutral",
         "turncoats",
-        "You can change the team you side with every other night. Use `side villagers` or `side wolves` to choose your team. If you do not wish to switch sides tonight, then you may use `pass`.",
+        "You can change the team you side with every other night. On those nights, i'll send you buttons in private message to side with the villagers or the wolves, or Pass to keep your side.",
     ],
     "serial killer": [
         "neutral",
         "serial killers",
-        "You may kill one player each night with `kill <player>`. Your objective is to outnumber the rest of town. If there are any other serial killers, then you do not know who they are, but you win together, provided that the serial killer is alive. The wolves are unable to kill you at night. If you do not wish to kill anyone tonight, then you may use `pass`.",
+        "Each night, i'll send you buttons in private message to choose someone to kill, or Pass. The wolves are unable to kill you at night. Your objective is to outnumber the rest of town. If there are any other serial killers, you do not know who they are, but you win together, provided that a serial killer is alive.",
     ],
     "executioner": [
         "neutral",
@@ -266,7 +244,7 @@ roles = {
     "hot potato": [
         "neutral",
         "hot potatoes",
-        "Under no circumstances may you win the game. You may choose to swap identities with someone else by using `choose <player>` at night.",
+        "Under no circumstances may you win the game. Each night, i'll send you buttons in private message to swap identities with someone, or Pass to keep yours.",
     ],
     "bishop": [
         "template",
