@@ -76,7 +76,11 @@ async def getmeme(event, args, client):
             try:
                 meme = await random_meme(
                     None if not sub or sub.isdigit() else sub,
-                    allow_nsfw=not (group and bot.block_nsfw and bot.group_dict.get(event.chat.id, {}).get("nsfw", True)),
+                    allow_nsfw=not (
+                        group
+                        and bot.block_nsfw
+                        and bot.group_dict.get(event.chat.id, {}).get("nsfw", True)
+                    ),
                 )
             except NoMeme as e:
                 return await event.reply(f"*{e}*")
