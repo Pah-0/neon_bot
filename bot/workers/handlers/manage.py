@@ -17,6 +17,7 @@ from bot.utils.msg_utils import (
     chat_is_allowed,
     event_handler,
     get_args,
+    get_user_info,
     user_is_admin,
     user_is_allowed,
     user_is_banned_by_ownr,

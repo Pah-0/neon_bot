@@ -2,6 +2,8 @@ from inspect import getdoc
 
 import aiohttp
 from neonize.proto.Neonize_pb2 import GetProfilePictureParams
+from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import GroupInviteMessage, Message
+from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 
 from bot import bot, jid
 from bot.utils.db_utils import save2db2

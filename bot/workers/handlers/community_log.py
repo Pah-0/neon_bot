@@ -4,6 +4,8 @@ joins, leaves or is removed from its community or any of the community's
 groups the bot is in, and each group counts who rejoins it (shown by .id)
 """
 
+from inspect import getdoc
+
 from bot import bot, jid
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event

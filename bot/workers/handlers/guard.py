@@ -12,7 +12,7 @@ from bot.utils.events import SEQUENTIAL_AUTO, Event
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args
 from bot.workers.auto.schedule import scheduler2
-from bot.utils.group_utils import admin_check, find_member, other_ids, remove, start_captchas, captchas, CAPTCHA_TRIES, finish_captcha
+from bot.utils.group_utils import admin_check, find_member, other_ids, remove, start_captchas, captchas, CAPTCHA_TRIES, finish_captcha, CAPTCHA_MINUTES
 
 
 def settings(chat_id: str) -> dict:
