@@ -204,6 +204,24 @@ def sanitize_text(text: str, truncate=True) -> str:
     return (text[:900] + "…") if len(text) > 900 and truncate else text
 
 
+def is_adult_rated(text: str) -> bool:
+    """Return True if text flags content as adult-rated / explicit / mature.
+
+    Tolerates markdown emphasis (*...*), the ➤ bullet prefix, and case
+    differences so variants like "*ADULT RATED:* True" or "➤ *MATURE:* Yes"
+    are all caught. Only positive flags block; "False"/"No"/other ratings
+    are not matched.
+    """
+    if not text:
+        return False
+    normalized = re.sub(r"[*➤]", "", text)
+    normalized = re.sub(r"\s+", " ", normalized).strip().lower()
+    return any(
+        flag in normalized
+        for flag in ("adult rated: true", "mature: yes", "rating: explicit")
+    )
+
+
 async def parse_and_send_rss(data: dict, chat_ids: list = None):
     try:
         author = data.get("author")
