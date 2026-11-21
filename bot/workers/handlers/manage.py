@@ -856,45 +856,6 @@ async def setname(event, args, client):
         await event.react("❌")
 
 
-async def group_standing(event, client, ids: set) -> list[str]:
-    """
-    .id lines for a group: its community's id, the user's roles here, and
-    the other groups of the community the bot sees them in
-    """
-    from .members import community_of, find_member
-
-    lines = []
-    parent = community_of(await client.get_group_info(event.chat.jid))
-    if parent:
-        lines.append(f"- *Community:* {parent.User}@{parent.Server}")
-    roles = bot.group_dict.get(event.chat.id, {}).get("roles", {})
-    # Roles from before LIDs can still hold phone numbers
-    theirs = sorted(
-        name for name, role in roles.items() if ids & set(role.get("members", []))
-    )
-    if theirs:
-        lines.append(f"- *Roles:* {', '.join(theirs)}")
-    if not parent:
-        return lines
-    groups = []
-    for group in await client.get_sub_groups(parent):
-        if group.JID.User == event.chat.id:
-            continue
-        try:
-            info = await client.get_group_info(group.JID)
-        except Exception:
-            # One the bot isn't in
-            continue
-        if any(find_member(u, info.Participants) for u in ids):
-            groups.append(info)
-    if groups:
-        lines.append("- *Also in:*")
-        # @id@g.us is sent as a group mention: its name, and a tap opens it
-        groups.sort(key=lambda info: info.GroupName.Name.casefold())
-        lines += [f"   - @{info.JID.User}@g.us" for info in groups]
-    return lines
-
-
 async def delete(event: Event, args, client):
     """
     [Owner | Sudo | Admin] Delete the replied message. Group only; reply required.
