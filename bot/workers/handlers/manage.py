@@ -1087,7 +1087,7 @@ async def grt_toggle(event, args, client):
         await event.react("❌")
 
 
-async def nsfw_toggle(event, args, client):
+async def nsfw_block(event, args, client):
     """
     [Owner | Sudo | Admin] Turn NSFW blocking on or off in this group.
     Group only; overrides the global BLOCK_NSFW setting for this chat.
