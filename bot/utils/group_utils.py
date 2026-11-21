@@ -201,7 +201,7 @@ def uncount_messages(msgs: list):
     """
     import datetime
 
-    from bot.utils.msg_utils import same_week
+    from bot.utils.bot_utils import same_week
 
     for msg in msgs:
         key = (msg.chat.id, msg.id)
