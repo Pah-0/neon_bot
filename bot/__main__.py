@@ -50,7 +50,7 @@ from .workers.handlers.manage import (
     enable_amr,
     enable_auto_delete_all_tags,
     grt_toggle,
-    nsfw_toggle,
+    nsfw_block,
     pause_handler,
     restart_handler,
     rss_handler,
@@ -60,7 +60,6 @@ from .workers.handlers.manage import (
     update_handler,
     ytdl_disable,
     ytdl_enable,
-    nsfw_block,
 )
 from .workers.handlers.media_dl import youtube_reply
 from .workers.handlers.members import add, gban, gunban, kick
