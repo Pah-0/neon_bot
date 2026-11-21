@@ -78,7 +78,7 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
             image, caption = await info(key)
             # NSFW check for groups with NSFW blocking enabled
             group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
-            if group and bot.block_nsfw:
+            if group and bot.block_nsfw and group.get("nsfw", True):
                 # Check for adult flags in caption
                 if is_adult_rated(caption):
                     return await event.reply(

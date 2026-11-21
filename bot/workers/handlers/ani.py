@@ -32,7 +32,7 @@ async def airing(event, args, client):
         img, out = await airing_anim(args)
         # NSFW check for groups with NSFW blocking enabled
         group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
-        if group and bot.block_nsfw:
+        if group and bot.block_nsfw and group.get("nsfw", True):
             if is_adult_rated(out):
                 return await event.reply(
                     "*This anime is adult-rated and NSFW is blocked in this group.*"
@@ -73,7 +73,7 @@ async def anime(event, args, client):
         img, out = await anime_arch(args, arg)
         # NSFW check for groups with NSFW blocking enabled
         group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
-        if group and bot.block_nsfw:
+        if group and bot.block_nsfw and group.get("nsfw", True):
             if is_adult_rated(out):
                 return await event.reply(
                     "*This anime is adult-rated and NSFW is blocked in this group.*"

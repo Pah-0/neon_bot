@@ -59,6 +59,7 @@ from .workers.handlers.manage import (
     update_handler,
     ytdl_disable,
     ytdl_enable,
+    nsfw_toggle,
 )
 from .workers.handlers.media_dl import youtube_reply
 from .workers.handlers.members import add, gban, gunban, kick
@@ -523,6 +524,11 @@ async def _(client: NewAClient, message: Event):
 @bot.register("ytdl_enable")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, ytdl_enable, bot.client)
+
+
+@bot.register("nsfw_toggle")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, nsfw_toggle, bot.client, require_args=True)
 
 
 @bot.register("del")
