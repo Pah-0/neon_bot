@@ -1,11 +1,19 @@
 """
-User ID resolution utilities. Moved from handlers/manage.py to break
+User ID resolution and display utilities. Moved from handlers/manage.py to break
 handler-to-handler import cycles.
 """
 
 import re
 
 from bot import bot, jid
+from bot.utils.group_utils import group_standing
+from bot.utils.log_utils import logger
+from bot.utils.msg_utils import (
+    chat_is_allowed,
+    get_user_info,
+    user_is_allowed,
+    user_is_privileged,
+)
 
 
 async def ids_from_lid(lid: str) -> tuple[str, str | None]:
@@ -49,3 +57,40 @@ async def target_user(event, args: str) -> tuple[str | None, str | None, str]:
         lid, number = await ids_from_lid(user.id)
         return lid, number, args
     return None, None, args
+
+
+async def show_ids(event, args, client):
+    """
+    Show your WhatsApp ids, or the replied or mentioned user's, and the chat's;
+    in a group, also their roles there, the other groups of its community
+    the bot sees them in, and how often they've rejoined it (from 2 times).
+    Phone numbers are only shown in a private chat with the bot.
+    Usage: id [@user]
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    try:
+        lid, number, _ = await target_user(event, (args or "").strip())
+        if not lid:
+            lid, number = user, getattr(event.from_user, "ph", None)
+        info = await get_user_info(lid, "lid")
+        name = info.PushName or info.FullName or "Unknown"
+        lines = [f"*{name}*", f"- *LID:* {lid}"]
+        # Groups hide numbers behind LIDs; only show them in private
+        if number and not event.chat.is_group:
+            lines.append(f"- *Number:* +{number}")
+        lines.append(f"- *Chat:* {event.chat.id}@{event.chat.server}")
+        if event.chat.is_group:
+            lines += await group_standing(event, client, {lid} | {number} - {None})
+            # Once is shown as nothing, like never
+            rejoins = bot.group_dict.get(event.chat.id, {}).get("rejoins", {})
+            if (times := rejoins.get(lid, 0)) > 1:
+                lines.append(f"- *Rejoined:* {times} times")
+        await event.reply("\n".join(lines))
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")

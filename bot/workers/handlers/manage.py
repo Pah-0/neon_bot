@@ -17,7 +17,6 @@ from bot.utils.msg_utils import (
     chat_is_allowed,
     event_handler,
     get_args,
-    get_user_info,
     user_is_admin,
     user_is_allowed,
     user_is_banned_by_ownr,
@@ -28,7 +27,7 @@ from bot.utils.msg_utils import (
 from bot.utils.os_utils import PR_STATE_FILE, re_x, restart_already_handled, updater
 from bot.utils.rss_utils import schedule_rss, scheduler
 from bot.utils.runtime import shutdown_services
-from bot.utils.user_utils import ids_from_lid, ids_from_number, target_user
+from bot.utils.user_utils import ids_from_lid, ids_from_number, target_user, show_ids
 from bot.utils.group_utils import uncount_messages
 
 
@@ -894,43 +893,6 @@ async def group_standing(event, client, ids: set) -> list[str]:
         groups.sort(key=lambda info: info.GroupName.Name.casefold())
         lines += [f"   - @{info.JID.User}@g.us" for info in groups]
     return lines
-
-
-async def show_ids(event, args, client):
-    """
-    Show your WhatsApp ids, or the replied or mentioned user's, and the chat's;
-    in a group, also their roles there, the other groups of its community
-    the bot sees them in, and how often they've rejoined it (from 2 times).
-    Phone numbers are only shown in a private chat with the bot.
-    Usage: id [@user]
-    """
-    user = event.from_user.id
-    if not user_is_privileged(user):
-        if not chat_is_allowed(event):
-            return
-        if not user_is_allowed(user):
-            return await event.react("⛔")
-    try:
-        lid, number, _ = await target_user(event, (args or "").strip())
-        if not lid:
-            lid, number = user, getattr(event.from_user, "ph", None)
-        info = await get_user_info(lid, "lid")
-        name = info.PushName or info.FullName or "Unknown"
-        lines = [f"*{name}*", f"- *LID:* {lid}"]
-        # Groups hide numbers behind LIDs; only show them in private
-        if number and not event.chat.is_group:
-            lines.append(f"- *Number:* +{number}")
-        lines.append(f"- *Chat:* {event.chat.id}@{event.chat.server}")
-        if event.chat.is_group:
-            lines += await group_standing(event, client, {lid} | {number} - {None})
-            # Once is shown as nothing, like never
-            rejoins = bot.group_dict.get(event.chat.id, {}).get("rejoins", {})
-            if (times := rejoins.get(lid, 0)) > 1:
-                lines.append(f"- *Rejoined:* {times} times")
-        await event.reply("\n".join(lines))
-    except Exception:
-        await logger(Exception)
-        await event.react("❌")
 
 
 async def delete(event: Event, args, client):
