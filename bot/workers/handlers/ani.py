@@ -4,7 +4,7 @@ from bot import bot
 from bot.utils.ani_utils import airing_anim, anime_arch
 from bot.utils.buttons import choose, sender_ids
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_args, user_is_allowed
+from bot.utils.msg_utils import get_args, is_adult_rated, user_is_allowed
 
 ani_client = anilist.AsyncClient()
 
@@ -33,7 +33,7 @@ async def airing(event, args, client):
         # NSFW check for groups with NSFW blocking enabled
         group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
         if group and bot.block_nsfw:
-            if "ADULT RATED: True" in out or "➤ *ADULT RATED:* True" in out:
+            if is_adult_rated(out):
                 return await event.reply(
                     "*This anime is adult-rated and NSFW is blocked in this group.*"
                 )
@@ -74,7 +74,7 @@ async def anime(event, args, client):
         # NSFW check for groups with NSFW blocking enabled
         group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
         if group and bot.block_nsfw:
-            if "ADULT RATED: True" in out or "➤ *ADULT RATED:* True" in out:
+            if is_adult_rated(out):
                 return await event.reply(
                     "*This anime is adult-rated and NSFW is blocked in this group.*"
                 )

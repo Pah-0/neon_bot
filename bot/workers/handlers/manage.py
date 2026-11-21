@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import itertools
 import json
-import re
 from inspect import getdoc
 
 from feedparser import parse as feedparse
@@ -11,6 +10,7 @@ from bot import bot, jid, rss_dict_lock
 from bot.utils.bot_utils import list_to_str, set_name, split_text
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
+from bot.utils.group_utils import uncount_messages
 from bot.utils.log_utils import logger
 from bot.utils.msg_store import get_messages
 from bot.utils.msg_utils import (
@@ -28,7 +28,7 @@ from bot.utils.msg_utils import (
 from bot.utils.os_utils import PR_STATE_FILE, re_x, restart_already_handled, updater
 from bot.utils.rss_utils import schedule_rss, scheduler
 from bot.utils.runtime import shutdown_services
-from bot.workers.handlers.wa import uncount_messages
+from bot.utils.user_utils import target_user
 
 
 async def restart_handler(event, args, client):
@@ -786,49 +786,6 @@ async def sudoers(event, args, client):
 NAME_MAX = 40
 
 
-async def ids_from_lid(lid: str) -> tuple[str, str | None]:
-    """(LID, phone number if WhatsApp has it)"""
-    try:
-        number = (await bot.client.get_pn_from_lid(jid.build_jid(lid, "lid"))).User
-    except Exception:
-        number = None
-    return lid, number or None
-
-
-async def ids_from_number(number: str) -> tuple[str | None, str]:
-    """(LID if WhatsApp has it, phone number)"""
-    try:
-        pn = jid.build_jid(number, "s.whatsapp.net")
-        lid = (await bot.client.get_lid_from_pn(pn)).User
-    except Exception:
-        lid = None
-    return lid or None, number
-
-
-async def target_user(event, args: str) -> tuple[str | None, str | None, str]:
-    """
-    (LID, phone number, the rest of args) for the user named first in args
-    (a mention, LID or +number), else the replied user, else (None, None, args)
-    """
-    first, _, rest = args.partition(" ")
-    if first and re.fullmatch(r"@?\+?[0-9]{5,16}", first):
-        token = first.lstrip("@")
-        # As .sudo reads ids: +number, or a LID where chats address by LID
-        if token.startswith("+") or not event.lid_address:
-            lid, number = await ids_from_number(token.lstrip("+"))
-        else:
-            lid, number = await ids_from_lid(token)
-        return lid, number, rest.strip()
-    if replied := event.reply_to_message:
-        user = replied.from_user
-        if number := getattr(user, "ph", None):
-            lid, number = await ids_from_number(number)
-            return lid or user.id or None, number, args
-        lid, number = await ids_from_lid(user.id)
-        return lid, number, args
-    return None, None, args
-
-
 async def setname(event, args, client):
     """
     [Owner | Sudo] Set the name the bot calls someone by, in place of their
@@ -894,82 +851,6 @@ async def setname(event, args, client):
         await event.reply(
             f"@{lid} *will now be called* {name}.", mentions_are_lids=True
         )
-    except Exception:
-        await logger(Exception)
-        await event.react("❌")
-
-
-async def group_standing(event, client, ids: set) -> list[str]:
-    """
-    .id lines for a group: its community's id, the user's roles here, and
-    the other groups of the community the bot sees them in
-    """
-    from .members import community_of, find_member
-
-    lines = []
-    parent = community_of(await client.get_group_info(event.chat.jid))
-    if parent:
-        lines.append(f"- *Community:* {parent.User}@{parent.Server}")
-    roles = bot.group_dict.get(event.chat.id, {}).get("roles", {})
-    # Roles from before LIDs can still hold phone numbers
-    theirs = sorted(
-        name for name, role in roles.items() if ids & set(role.get("members", []))
-    )
-    if theirs:
-        lines.append(f"- *Roles:* {', '.join(theirs)}")
-    if not parent:
-        return lines
-    groups = []
-    for group in await client.get_sub_groups(parent):
-        if group.JID.User == event.chat.id:
-            continue
-        try:
-            info = await client.get_group_info(group.JID)
-        except Exception:
-            # One the bot isn't in
-            continue
-        if any(find_member(u, info.Participants) for u in ids):
-            groups.append(info)
-    if groups:
-        lines.append("- *Also in:*")
-        # @id@g.us is sent as a group mention: its name, and a tap opens it
-        groups.sort(key=lambda info: info.GroupName.Name.casefold())
-        lines += [f"   - @{info.JID.User}@g.us" for info in groups]
-    return lines
-
-
-async def show_ids(event, args, client):
-    """
-    Show your WhatsApp ids, or the replied or mentioned user's, and the chat's;
-    in a group, also their roles there, the other groups of its community
-    the bot sees them in, and how often they've rejoined it (from 2 times).
-    Phone numbers are only shown in a private chat with the bot.
-    Usage: id [@user]
-    """
-    user = event.from_user.id
-    if not user_is_privileged(user):
-        if not chat_is_allowed(event):
-            return
-        if not user_is_allowed(user):
-            return await event.react("⛔")
-    try:
-        lid, number, _ = await target_user(event, (args or "").strip())
-        if not lid:
-            lid, number = user, getattr(event.from_user, "ph", None)
-        info = await get_user_info(lid, "lid")
-        name = info.PushName or info.FullName or "Unknown"
-        lines = [f"*{name}*", f"- *LID:* {lid}"]
-        # Groups hide numbers behind LIDs; only show them in private
-        if number and not event.chat.is_group:
-            lines.append(f"- *Number:* +{number}")
-        lines.append(f"- *Chat:* {event.chat.id}@{event.chat.server}")
-        if event.chat.is_group:
-            lines += await group_standing(event, client, {lid} | {number} - {None})
-            # Once is shown as nothing, like never
-            rejoins = bot.group_dict.get(event.chat.id, {}).get("rejoins", {})
-            if (times := rejoins.get(lid, 0)) > 1:
-                lines.append(f"- *Rejoined:* {times} times")
-        await event.reply("\n".join(lines))
     except Exception:
         await logger(Exception)
         await event.react("❌")

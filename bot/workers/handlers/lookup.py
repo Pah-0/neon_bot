@@ -20,6 +20,7 @@ from bot.utils.lookup_utils import (
 from bot.utils.msg_utils import (
     chat_is_allowed,
     get_args,
+    is_adult_rated,
     user_is_allowed,
     user_is_privileged,
 )
@@ -79,12 +80,7 @@ async def look_up(event, query: str, what: str, search, info, direct=None):
             group = event.chat.is_group and bot.group_dict.get(event.chat.id, {})
             if group and bot.block_nsfw:
                 # Check for adult flags in caption
-                if (
-                    "ADULT RATED: True" in caption
-                    or "MATURE: Yes" in caption
-                    or "*RATING: Explicit*" in caption
-                    or "➤ *RATING:* Explicit" in caption
-                ):
+                if is_adult_rated(caption):
                     return await event.reply(
                         f"*This {what} is adult-rated and NSFW is blocked in this group.*"
                     )

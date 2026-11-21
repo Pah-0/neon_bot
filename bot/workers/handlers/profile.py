@@ -18,7 +18,7 @@ from bot.utils.msg_utils import (
     user_is_privileged,
 )
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
-from bot.workers.handlers.manage import target_user
+from bot.utils.user_utils import target_user
 
 # A WhatsApp poll takes at most 12 options, as many as a showcase holds
 MAX_CHOICES = 12

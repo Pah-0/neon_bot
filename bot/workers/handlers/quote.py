@@ -8,6 +8,7 @@ from PIL import Image, ImageSequence
 
 from bot.config import bot
 from bot.utils.bot_utils import sync_to_async
+from bot.utils.group_utils import get_member_label
 from bot.utils.log_utils import logger
 from bot.utils.msg_store import get_messages
 from bot.utils.msg_utils import (
@@ -18,7 +19,6 @@ from bot.utils.msg_utils import (
     user_is_privileged,
 )
 from bot.utils.quote_card import quote_card
-from bot.workers.handlers.wa import get_member_label
 
 
 async def quote(event, args, client):
