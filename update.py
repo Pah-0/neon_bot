@@ -123,7 +123,15 @@ def end_pr_test(state, reason, log=""):
 
 try:
     # Read before git runs: resets and cleans can remove untracked files
-    pr_state = read_json(pr_state_file)
+    pr_state = read_json(pr_state_file) or {}
+    # Capture the crash log before any git clean can delete it
+    try:
+        pr_state["_crash_log"] = "\n".join(
+            crash_log.read_text(errors="replace").splitlines()[-15:]
+        )
+    except OSError:
+        pr_state["_crash_log"] = ""
+    pr_state_file.write_text(json.dumps(pr_state))
     old_requirements = requirements_hash()
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
     update = None
@@ -131,11 +139,7 @@ try:
     if revert and pr_state:
         # run.sh saw the bot crash while testing a PR
         code = sys.argv[2] if len(sys.argv) > 2 else "?"
-        try:
-            log = "\n".join(crash_log.read_text(
-                errors="replace").splitlines()[-15:])
-        except OSError:
-            log = ""
+        log = pr_state.get("_crash_log", "")
         update = end_pr_test(pr_state, f"crashed (exit code {code})", log)
         print(
             f"PR #{
