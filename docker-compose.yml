@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  neon-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        LOCAL_UPSCALE: ${LOCAL_UPSCALE:-false}
+    container_name: neon-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-Africa/Lagos}
+      - PYTHONUNBUFFERED=1
+      - POSTGRES_HOST=${POSTGRES_HOST:-}
+      - POSTGRES_USER=${POSTGRES_USER:-neon}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-neon}
+      - POSTGRES_DB=${POSTGRES_DB:-neon}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+    volumes:
+      - ./bot/sessions:/bot/bot/sessions
+      - ./bot/database:/bot/bot/database
+      - ./logs:/bot/logs
+    # Uncomment if using local upscaling with GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "python3 -m bot"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles: ["bot"]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: neon-postgres
+    restart: unless-stopped
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-neon}
+      POSTGRES_USER: ${POSTGRES_USER:-neon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neon}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-neon} -d ${POSTGRES_DB:-neon}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

@@ -67,7 +67,17 @@ class Config:
             self.TELEGRAPH_API = config(
                 "TELEGRAPH_API", default="https://api.telegra.ph"
             )
-            self.WA_DB = config("WA_DB", default="db.sqlite3")
+            pg_host = config("POSTGRES_HOST", default="")
+            if pg_host:
+                pg_user = config("POSTGRES_USER", default="neon")
+                pg_pass = config("POSTGRES_PASSWORD", default="neon")
+                pg_db = config("POSTGRES_DB", default="neon")
+                pg_port = config("POSTGRES_PORT", default="5432")
+                self.WA_DB = (
+                    f"postgresql://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
+                )
+            else:
+                self.WA_DB = config("WA_DB", default="db.sqlite3")
             self.WA_DB_BACKUP_INTERVAL = config(
                 "WA_DB_BACKUP_INTERVAL", default=43200, cast=int
             )
