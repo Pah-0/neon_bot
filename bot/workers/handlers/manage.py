@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import itertools
 import json
-import re
 from inspect import getdoc
 
 from feedparser import parse as feedparse
@@ -11,6 +10,7 @@ from bot import bot, jid, rss_dict_lock
 from bot.utils.bot_utils import list_to_str, set_name, split_text
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
+from bot.utils.group_utils import uncount_messages
 from bot.utils.log_utils import logger
 from bot.utils.msg_store import get_messages
 from bot.utils.msg_utils import (
@@ -28,8 +28,7 @@ from bot.utils.msg_utils import (
 from bot.utils.os_utils import PR_STATE_FILE, re_x, restart_already_handled, updater
 from bot.utils.rss_utils import schedule_rss, scheduler
 from bot.utils.runtime import shutdown_services
-from bot.utils.user_utils import ids_from_lid, ids_from_number, target_user, show_ids
-from bot.utils.group_utils import uncount_messages
+from bot.utils.user_utils import target_user
 
 
 async def restart_handler(event, args, client):

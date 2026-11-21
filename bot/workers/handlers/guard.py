@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import io
 import re
@@ -9,10 +8,10 @@ from bot import bot, jid
 from bot.others.exceptions import StopAutoHandlers
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
+from bot.utils.group_utils import CAPTCHA_MINUTES, admin_check, captchas, finish_captcha
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import get_args
 from bot.workers.auto.schedule import scheduler2
-from bot.utils.group_utils import admin_check, find_member, other_ids, remove, start_captchas, captchas, CAPTCHA_TRIES, finish_captcha, CAPTCHA_MINUTES
 
 
 def settings(chat_id: str) -> dict:
@@ -191,8 +190,6 @@ def make_captcha() -> tuple[bytes, str]:
     image.save(out, format="png")
     return out.getvalue(), str(code)
 
-
-from bot.utils.group_utils import start_captchas, captchas, CAPTCHA_TRIES, finish_captcha
 
 async def captcha_gate(event: Event, _, client):
     """

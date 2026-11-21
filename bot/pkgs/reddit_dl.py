@@ -67,8 +67,7 @@ def is_valid_reddit_url(url: str) -> bool:
     (resolve a share link with resolve_share_url first)
     """
     return any(
-        r.match(url)
-        for r in (POST_RE, SHARE_RE, SHORT_RE, VIDEO_RE, COMMENT_RE)
+        r.match(url) for r in (POST_RE, SHARE_RE, SHORT_RE, VIDEO_RE, COMMENT_RE)
     )
 
 
@@ -119,7 +118,9 @@ async def _get_post(session: aiohttp.ClientSession, post_id: str) -> dict:
 
 
 async def _get_comment(session: aiohttp.ClientSession, comment_id: str) -> dict:
-    async with session.get(ARCTIC_SHIFT_COMMENTS_API, params={"ids": comment_id}) as resp:
+    async with session.get(
+        ARCTIC_SHIFT_COMMENTS_API, params={"ids": comment_id}
+    ) as resp:
         if resp.status >= 400:
             try:
                 error = (await resp.json()).get("error")
@@ -330,7 +331,9 @@ async def download_reddit(
             comment_id = m.group("id")
             comment = await _get_comment(session, comment_id)
             media = _comment_media(comment)
-            caption = f"Comment by u/{comment.get('author', 'unknown')} in r/{comment.get('subreddit', 'unknown')}"
+            caption = f"Comment by u/{comment.get('author',
+                                                  'unknown')} in r/{comment.get('subreddit',
+                                                                                'unknown')}"
             if not media:
                 raise RuntimeError("This comment has no Reddit-hosted media")
         else:

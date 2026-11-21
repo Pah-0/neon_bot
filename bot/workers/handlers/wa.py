@@ -1,6 +1,5 @@
 import asyncio
 import copy
-import datetime
 import io
 import json
 import random
@@ -50,7 +49,6 @@ from bot.utils.bot_utils import (
     png_to_jpg,
     post_to_tgph,
     read_binary,
-    same_week,
     screenshot_comments,
     screenshot_page,
     space_commands,
@@ -66,6 +64,16 @@ from bot.utils.bot_utils import (
 from bot.utils.buttons import pressed_button, sender_ids
 from bot.utils.db_utils import save2db2
 from bot.utils.events import SEQUENTIAL_AUTO, Event
+from bot.utils.group_utils import (
+    count_rejoins,
+    decline_banned_request,
+    get_member_label,
+    keep_out_banned,
+    log_member_changes,
+    member_label_keys,
+    start_captchas,
+    uncount_messages,
+)
 from bot.utils.log_utils import log, logger
 from bot.utils.media_marks import (
     COMPRESSED,
@@ -111,7 +119,6 @@ from bot.utils.sudo_button_utils import create_sudo_button, wait_for_button_resp
 from bot.utils.wa_markdown import md_to_whatsapp
 from bot.utils.ytdl_utils import is_valid_trim_args, trim_vid
 from bot.workers.auto.reminder import cancel_reminder, schedule_reminder_async
-from bot.utils.group_utils import count_rejoins, log_member_changes, decline_banned_request, keep_out_banned, start_captchas
 
 Image.MAX_IMAGE_PIXELS = 400_000_000
 
@@ -2235,7 +2242,6 @@ async def purge_messages(event, args, client):
 # ProtocolMessage type sent when a member sets or clears their group tag
 MEMBER_LABEL_CHANGE = 30
 
-from bot.utils.group_utils import get_member_label, member_label_keys
 
 async def rec_member_label(event, args, client):
     """
@@ -2394,7 +2400,6 @@ async def rec_msg_ranking(event, args, client):
     except Exception:
         await logger(Exception)
 
-from bot.utils.group_utils import uncount_messages, uncounted
 
 async def msg_ranking(event, args, client):
     """

@@ -9,9 +9,8 @@ from inspect import getdoc
 from bot import bot, jid
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
+from bot.utils.group_utils import admin_check
 from bot.utils.log_utils import logger
-
-from bot.utils.group_utils import admin_check, community_of, log_member_changes, count_rejoins
 
 
 async def community_log(event: Event, args, client):

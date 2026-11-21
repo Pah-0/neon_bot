@@ -8,13 +8,11 @@ from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 from bot import bot, jid
 from bot.utils.db_utils import save2db2
 from bot.utils.events import Event
-from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_args, get_mentioned, user_is_admin, user_is_privileged
 from bot.utils.group_utils import (
     ADD_ERRORS,
     admin_check,
-    bans,
     banned_for,
+    bans,
     community_of,
     find_member,
     member_ids,
@@ -25,6 +23,8 @@ from bot.utils.group_utils import (
     tag,
     targets,
 )
+from bot.utils.log_utils import logger
+from bot.utils.msg_utils import user_is_admin, user_is_privileged
 
 
 async def kick(event: Event, args, client):

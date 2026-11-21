@@ -6,15 +6,18 @@ handler-to-handler import cycles.
 import asyncio
 import time
 
-from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import GroupInviteMessage, Message
 from neonize.utils.enum import ParticipantChange, ParticipantRequestChange
 
 from bot import bot, jid
 from bot.utils.bot_utils import LimitedDict
 from bot.utils.db_utils import save2db2
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_args, get_mentioned, user_is_admin, user_is_privileged
-
+from bot.utils.msg_utils import (
+    get_args,
+    get_mentioned,
+    user_is_admin,
+    user_is_privileged,
+)
 
 # Error codes WhatsApp gives per participant when adding one fails
 ADD_ERRORS = {
@@ -196,8 +199,9 @@ def uncount_messages(msgs: list):
     Takes deleted messages (as stored) off their senders' message counts,
     the ones counted this week
     """
-    from bot.utils.msg_utils import same_week
     import datetime
+
+    from bot.utils.msg_utils import same_week
 
     for msg in msgs:
         key = (msg.chat.id, msg.id)
@@ -242,7 +246,9 @@ async def as_lid(user) -> str | None:
     if user.Server == "lid":
         return user.User
     try:
-        return (await bot.client.get_lid_from_pn(jid.build_jid(user.User, "s.whatsapp.net"))).User
+        return (
+            await bot.client.get_lid_from_pn(jid.build_jid(user.User, "s.whatsapp.net"))
+        ).User
     except Exception:
         return None
 
@@ -323,10 +329,13 @@ async def send_after_delay(key: tuple):
     if action == "join":
         line = f"➕ @{user} joined {groups}" + (f" ({detail})" if detail else "")
     else:
-        line = f"{'➖' if action == 'leave' else '⛔'} @{user} {action}ed from {groups}" + (
-            f" ({detail})" if detail else ""
+        line = (
+            f"{'➖' if action == 'leave' else '⛔'} @{user} {action}ed from {groups}"
+            + (f" ({detail})" if detail else "")
         )
-    await bot.client.send_message(jid.build_jid(log_chat, "g.us"), line, mentions=[user])
+    await bot.client.send_message(
+        jid.build_jid(log_chat, "g.us"), line, mentions=[user]
+    )
 
 
 async def keep_out_banned(gc_msg) -> set:
@@ -379,14 +388,16 @@ captchas: dict[str, dict[str, dict]] = {}
 async def make_captcha() -> tuple[bytes, str]:
     """Generates a captcha image and code"""
     import io
-    import re
+
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
     code = "".join(str(i) for i in __import__("random").randint(1000, 9999))
     image = Image.new("RGB", (200, 80), (255, 255, 255))
     draw = ImageDraw.Draw(image)
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40
+        )
     except Exception:
         font = ImageFont.load_default()
     draw.text((20, 15), code, font=font, fill=(0, 0, 0))
@@ -394,7 +405,14 @@ async def make_captcha() -> tuple[bytes, str]:
     for _ in range(100):
         x = __import__("random").randint(0, 200)
         y = __import__("random").randint(0, 80)
-        draw.point((x, y), fill=(__import__("random").randint(0, 255), __import__("random").randint(0, 255), __import__("random").randint(0, 255)))
+        draw.point(
+            (x, y),
+            fill=(
+                __import__("random").randint(0, 255),
+                __import__("random").randint(0, 255),
+                __import__("random").randint(0, 255),
+            ),
+        )
     image = image.filter(ImageFilter.GaussianBlur(1))
     out = io.BytesIO()
     image.save(out, format="png")
