@@ -293,15 +293,15 @@ def connect_mongo(url: str):
     credentials, are raised at once.
     """
     from pymongo import MongoClient
-    from pymongo.errors import ConnectionFailure
+    from pymongo.errors import ConfigurationError, ConnectionFailure
 
-    client = MongoClient(url)
     delay, attempt = 5, 1
     while True:
         try:
+            client = MongoClient(url)
             client.admin.command("ping")
             return client
-        except ConnectionFailure as e:
+        except (ConfigurationError, ConnectionFailure) as e:
             reason = str(e)[:200]
             LOGS.warning(
                 f"MongoDB unreachable (attempt {attempt}), "
