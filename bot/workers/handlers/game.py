@@ -36,13 +36,15 @@ async def werewolf_handler(event, args, client):
     Plays a game of Werewolf in the chat; without arguments shows the game help.
     A lobby auto-starts after 3 minutes without joins/leaves, or once it is full.
 
-    Arguments (only the first of -j, -l, -s, --start, --mode given is used):
+    Arguments (only the first of -j, -l, -s, --start, --mode, --role given is used):
         -j : create a lobby (you join it) or join the existing one
         -l : leave the lobby or game
         -s : show lobby or game status
         --start : start the lobby now (needs the mode's minimum players)
         --mode <mode> : set the lobby's mode, creating a lobby if none exists (default: chosen by chance)
         --mode all : list available modes
+        --role <name> : show one role's team and description (e.g. --role succubus)
+        --role all : list all roles grouped by team
         -r : restricted mode: while the game runs, only living players can talk; the group
             goes admins-only and living players who aren't admins are made admins until they
             die or the game ends (needs the bot to be the group's super admin, its creator;
@@ -104,7 +106,7 @@ async def werewolf_handler(event, args, client):
         return await were_info(event, args, client)
     arg, args = get_args(
         "--mode",
-        "--roles",
+        "--role",
         ["-j", "store_true"],
         ["-l", "store_true"],
         ["-s", "store_true"],
@@ -161,19 +163,38 @@ async def werewolf_handler(event, args, client):
 
         return await start_game(event, game)
 
-    if arg.roles:
-        msg = "*Werewolf Roles:*\n"
-        by_team = {}
-        for name, (team, plural, desc) in roles.items():
-            if team == "template":
-                continue
-            by_team.setdefault(team, []).append((name, plural, desc))
-        for team in ("wolf", "villager", "neutral"):
-            if team in by_team:
-                msg += f"\n*{team.title()} team:*\n"
-                for name, plural, desc in sorted(by_team[team], key=lambda x: x[0]):
-                    msg += f"- *{name}* ({plural}): {desc}\n"
-        return await event.reply(msg)
+    if arg.role:
+        role_query = arg.role.strip().casefold()
+        if role_query == "all":
+            msg = "*Werewolf Roles:*\n"
+            by_team = {}
+            for name, (team, plural, desc) in roles.items():
+                if team == "template":
+                    continue
+                by_team.setdefault(team, []).append((name, plural, desc))
+            for team in ("wolf", "villager", "neutral"):
+                if team in by_team:
+                    msg += f"\n*{team.title()} team:*\n"
+                    for name, plural, desc in sorted(by_team[team], key=lambda x: x[0]):
+                        msg += f"- *{name}* ({plural}): {desc}\n"
+            return await event.reply(msg)
+        # exact match on role name or plural first
+        exact = [(n, t, p, d) for n, (t, p, d) in roles.items()
+                 if role_query in (n.casefold(), p.casefold())]
+        if exact:
+            n, team, plural, desc = exact[0]
+            return await event.reply(f"*{n}* (team: {team}): {desc}")
+        # else substring match on the name
+        partial = [(n, t, p, d) for n, (t, p, d) in roles.items()
+                   if role_query in n.casefold()]
+        if len(partial) == 1:
+            n, team, plural, desc = partial[0]
+            return await event.reply(f"*{n}* (team: {team}): {desc}")
+        if len(partial) > 1:
+            names = ", ".join(f"*{n}*" for n, *_ in partial)
+            return await event.reply(
+                f"Multiple roles match *{arg.role}*: {names}. Be more specific.")
+        return await event.reply(f"Role *{arg.role}* not found.")
 
     if arg.mode:
         if game and not isinstance(game, dict) and not game.waiting:
