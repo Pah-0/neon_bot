@@ -106,7 +106,7 @@ def _extract_challenge_data(html: str) -> dict:
         raise RuntimeError("No #cs element found on challenge page")
     cs_b64 = cs_match.group(1)
     try:
-        # Append padding — class attributes can't contain '=', so it's always
+        # Append padding, class attributes can't contain '=', so it's always
         # stripped
         padded = cs_b64 + "==="
         decoded = base64.b64decode(padded)

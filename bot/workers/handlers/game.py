@@ -509,7 +509,7 @@ async def send_ww_rank_buttons(event):
     """Send a button message for ranking category selection."""
     await send_buttons(
         event.chat_jid,
-        "🏆 *Werewolf Rankings* — select a category:",
+        "🏆 *Werewolf Rankings:* select a category:",
         [(f"wwrank:{cat}", cfg["label"]) for cat, cfg in CATEGORY_CONFIG.items()],
     )
 

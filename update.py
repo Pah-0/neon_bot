@@ -130,7 +130,7 @@ try:
         pr_state_file.unlink(missing_ok=True)
         pr_state = {}
 
-    # Capture the crash log before any git clean can delete it — but only
+    # Capture the crash log before any git clean can delete it - but only
     # when there is actually a PR test in progress.
     if pr_state.get("pr"):
         try:

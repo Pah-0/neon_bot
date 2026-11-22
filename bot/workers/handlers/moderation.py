@@ -209,7 +209,7 @@ async def pfilters(event: Event, args, client):
             if rule.get("all")
             else " (whole word)" if rule.get("word") else ""
         )
-        reason = f" — {rule['reason']}" if rule.get("reason") else ""
+        reason = f" - {rule['reason']}" if rule.get("reason") else ""
         lines.append(f"• {trigger}{mode}{reason}")
     await event.reply(f"*Punishing filters* (members are {kick}):\n" + "\n".join(lines))
 

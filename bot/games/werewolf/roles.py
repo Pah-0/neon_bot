@@ -11,7 +11,7 @@ roles = {
         "wolf",
         "werecrows",
         "You are part of the wolfteam. Each night, i'll send you buttons here to vote on who to kill, and to observe someone. "
-        "You'll learn whether they were in bed all night (roles that act optionally or once per game — matchmakers, hunters, clones, assassins, turncoats — count as in bed even if they acted) "
+        "You'll learn whether they were in bed all night (roles that act optionally or once per game i.e matchmakers, hunters, clones, assassins, turncoats, count as in bed even if they acted) "
         "or out of bed (Nocturnal roles that must use their power every night, such as harlot even if they stay home). "
         "You can both observe and kill in the same night.",
     ],
