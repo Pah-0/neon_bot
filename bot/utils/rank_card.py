@@ -165,7 +165,7 @@ def _draw_ranking(
             ),
         )
         put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (255,)))
-    title = "Final Standings" if final else "Message Leaderboard"
+    title = data.get("title") or ("Final Standings" if final else "Message Leaderboard")
     draw.text((40, 34), title, font=font(46, True), fill=WHITE)
     if final:
         label = final.upper()
@@ -175,21 +175,25 @@ def _draw_ranking(
             card, (CW - 40 - lw, 44, CW - 40, 80), radius=18, fill=FINAL_ACCENT + (255,)
         )
         draw.text((CW - 40 - lw + 16, 49), label, font=face, fill=(20, 20, 30, 255))
-    subtitle = " · ".join(p for p in (data.get("group"), data.get("period")) if p)
+    subtitle = data.get("subtitle") or " · ".join(
+        p for p in (data.get("group"), data.get("period")) if p
+    )
     if subtitle:
         subtitle = fit_rich(subtitle, 26, False, CW - 84, emojis)
         draw_rich(card, draw, (42, 98), subtitle, 26, False, SOFT, emojis)
-    totals = (
+    totals = data.get("totals") or (
         f"{human_format_num(data['total'])} messages  ·  "
         f"{human_format_num(data['members'])} members"
     )
     draw.text((42, 140), totals, font=font(24), fill=FAINT)
 
+    unit = data.get("unit", "message")
+    unit_plural = data.get("unit_plural", unit + "s")
     top = max((r["count"] for r in rows), default=1) or 1
     # Names and bars run up to the widest count on the right
     count_w = max(
         [text_width(human_format_num(r["count"]), font(34, True)) for r in rows]
-        + [text_width("messages", font(18))]
+        + [text_width(unit_plural, font(18))]
     )
     name_w = CW - 54 - count_w - 32 - 192
     for i, row in enumerate(rows):
@@ -255,10 +259,13 @@ def _draw_ranking(
             font=face,
             fill=GOLD if colour else WHITE,
         )
-        unit = "message" if row["count"] == 1 else "messages"
+        label = unit if row["count"] == 1 else unit_plural
         face = font(18)
         draw.text(
-            (CW - 54 - text_width(unit, face), y + 59), unit, font=face, fill=FAINT
+            (CW - 54 - text_width(label, face), y + 59),
+            label,
+            font=face,
+            fill=FAINT,
         )
 
     if more:

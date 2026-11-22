@@ -131,6 +131,7 @@ class Runtime_Config:
         self.rss_ran_once = False
         self.stop_back_up = False
         self.user_dict = {}
+        self.werewolf_stats = {}
         self.version = None
 
 

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from bot import sudo_btn_lock
 from bot.config import conf
 from bot.utils.buttons import choose
+from bot.utils.db_utils import save2db2
 from bot.utils.log_utils import logger
 from bot.utils.sudo_button_utils import (
     active_poll_dict,
@@ -35,6 +36,7 @@ from .defaults import (
 )
 from .lock import lock_group, unlock_group
 from .roles import roles
+from .stats import record
 
 NIGHT_ACTIONS = {
     cmd: roles_ for cmd, roles_ in COMMANDS_FOR_ROLE.items() if cmd not in DAY_COMMANDS
@@ -1189,6 +1191,15 @@ async def day_phase(game):
         )
     p.is_lynched = True
     p.add_other("lynched")
+    record(p.user_id, lynched=1)
+    clockers = [v.user_id for v in game.players_alive_list if v.vote == p.user_id]
+    if p.actual_team != "village":
+        # lynching a nefarious role: voters "clock" them
+        for v_id in clockers:
+            record(v_id, clocked=1)
+    else:
+        # village player wrongly lynched
+        record(p.user_id, wrong_lynched=1)
     msg = random.choice(lang["lynched"]).format(p.name, p.death_role)
     extra = await game.kill(p, "lynch")
     voters = [v for v in game.players_alive_list if v.vote == p.user_id]
@@ -1266,5 +1277,12 @@ async def end_game(game, win_data):
     msg += "\n*Final player list:*\n"
     for p in game.players.values():
         msg += f"- {p.name}: {p.role} ({'Alive' if p.is_alive else 'Dead'})\n"
+    for p in game.players.values():
+        record(p.user_id, games=1)
+        if p.user_id in winners_ids:
+            record(p.user_id, wins=1)
+        elif win_team != "no win":
+            record(p.user_id, losses=1)
+    await save2db2(bot.werewolf_stats, "werewolf_stats")
     await game.send_lobby(msg)
     game.close()

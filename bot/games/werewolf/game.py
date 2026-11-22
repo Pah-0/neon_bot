@@ -23,6 +23,7 @@ from .defaults import (
 from .lock import demote_dead
 from .player import Player
 from .roles import gamemodes, roles
+from .stats import record
 
 
 class Game:
@@ -429,6 +430,7 @@ class Game:
         if not player.is_alive:
             return msg
         player.is_alive = False
+        record(player.user_id, deaths=1)
         if self.restricted:
             await demote_dead(self, player)
         # idling out has none of the effects a death by a player has

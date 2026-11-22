@@ -15,10 +15,18 @@ from bot.games.werewolf.logic import (
     redirect,
     shot_outcome,
 )
+from bot.games.werewolf.rank import CATEGORY_CONFIG, send_ww_rank
 from bot.games.werewolf.roles import gamemodes
+from bot.games.werewolf.stats import get as stats_get
+from bot.games.werewolf.stats import record
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
-from bot.utils.msg_utils import get_args, user_is_admin, user_is_privileged
+from bot.utils.msg_utils import (
+    get_args,
+    get_user_info,
+    user_is_admin,
+    user_is_privileged,
+)
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
 from bot.utils.user_utils import show_ids, target_user
 
@@ -88,6 +96,10 @@ async def werewolf_handler(event, args, client):
         if cmd == "id":
             return await show_ids(event, args, client)
         return
+    if cmd == "wwstats":
+        return await show_wwstats(event)
+    if cmd in ("wwrank", "wwrankings"):
+        return await send_ww_rank_buttons(event)
     if not args:
         return await were_info(event, args, client)
     arg, args = get_args(
@@ -373,6 +385,8 @@ async def handle_game_command(game, event, cmd_type):
             target.is_injured = True
         if dead:
             msg += "\n" + await game.kill(dead, "shot")
+            if dead is target:
+                record(player.user_id, shots=1)
         await game.send_lobby(msg.rstrip())
         if dead:
             await game.check_traitor()
@@ -406,6 +420,65 @@ async def werewolf_restriction_handler(client, event):
             await event.delete()
         except Exception:
             pass
+
+
+async def show_wwstats(event):
+    """Shows a player's global werewolf stats."""
+    stats = stats_get(event.from_user.id)
+    if not stats:
+        return await event.reply(
+            f"You have no werewolf stats yet! Play a game with `{conf.CMD_PREFIX}werewolf -j`."
+        )
+    user_info = await get_user_info(event.from_user.id)
+    name = user_info.PushName or user_info.FullName or event.from_user.name
+    msg = f"*{name}'s Werewolf Stats*\n"
+    for key in (
+        "games",
+        "wins",
+        "losses",
+        "lynched",
+        "deaths",
+        "clocked",
+        "wrong_lynched",
+        "shots",
+    ):
+        label_map = {
+            "games": "Games",
+            "wins": "Wins",
+            "losses": "Losses",
+            "lynched": "Lynched",
+            "deaths": "Deaths",
+            "clocked": "Clocked it",
+            "wrong_lynched": "Wrongly Lynched",
+            "shots": "Shots",
+        }
+        label = label_map.get(key, key.capitalize())
+        msg += f"{label}: {stats.get(key, 0)}\n"
+    if stats.get("games", 0) > 0:
+        win_rate = stats["wins"] / stats["games"] * 100
+        msg += f"Win rate: {win_rate:.1f}%"
+    return await event.reply(msg)
+
+
+async def send_ww_rank_buttons(event):
+    """Send a button message for ranking category selection."""
+    await send_buttons(
+        event.chat_jid,
+        "🏆 *Werewolf Rankings* — select a category:",
+        [(f"wwrank:{cat}", cfg["label"]) for cat, cfg in CATEGORY_CONFIG.items()],
+    )
+
+
+@on_button("wwrank")
+async def wwrank_button_handler(event, data: str):
+    """Handle a press on a werewolf rankings button."""
+    _, _, cat = data.partition(":")
+    if cat not in CATEGORY_CONFIG:
+        return
+    try:
+        await send_ww_rank(event.chat, cat)
+    except Exception:
+        await event.reply(f"Failed to load {cat} ranking.")
 
 
 async def were_info(event, args, client):
