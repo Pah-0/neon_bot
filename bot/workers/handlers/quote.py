@@ -105,7 +105,7 @@ def preview_text(message) -> str:
 # An animated quote's length and frame rate, which keep the sticker within
 # WhatsApp's size limit
 MAX_MS = 6000
-FPS = 20
+FPS = 60
 MAX_STICKER_BYTES = 950_000
 
 
