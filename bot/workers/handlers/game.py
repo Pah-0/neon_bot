@@ -179,21 +179,26 @@ async def werewolf_handler(event, args, client):
                         msg += f"- *{name}* ({plural}): {desc}\n"
             return await event.reply(msg)
         # exact match on role name or plural first
-        exact = [(n, t, p, d) for n, (t, p, d) in roles.items()
-                 if role_query in (n.casefold(), p.casefold())]
+        exact = [
+            (n, t, p, d)
+            for n, (t, p, d) in roles.items()
+            if role_query in (n.casefold(), p.casefold())
+        ]
         if exact:
             n, team, plural, desc = exact[0]
             return await event.reply(f"*{n}* (team: {team}): {desc}")
         # else substring match on the name
-        partial = [(n, t, p, d) for n, (t, p, d) in roles.items()
-                   if role_query in n.casefold()]
+        partial = [
+            (n, t, p, d) for n, (t, p, d) in roles.items() if role_query in n.casefold()
+        ]
         if len(partial) == 1:
             n, team, plural, desc = partial[0]
             return await event.reply(f"*{n}* (team: {team}): {desc}")
         if len(partial) > 1:
             names = ", ".join(f"*{n}*" for n, *_ in partial)
             return await event.reply(
-                f"Multiple roles match *{arg.role}*: {names}. Be more specific.")
+                f"Multiple roles match *{arg.role}*: {names}. Be more specific."
+            )
         return await event.reply(f"Role *{arg.role}* not found.")
 
     if arg.mode:
