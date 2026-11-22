@@ -234,6 +234,10 @@ async def werewolf_handler(event, args, client):
             game.requested_mode = mode_name
             return await event.reply(f"Mode set to *{mode_name}*.")
 
+    return await event.reply(
+        f"Unknown argument `{args}`. Use `{conf.CMD_PREFIX}werewolf` for help."
+    )
+
 
 async def start_game(event, game):
     """Validates the lobby, assigns roles and starts the game loop."""
