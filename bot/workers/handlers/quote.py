@@ -213,9 +213,7 @@ async def make_quote(event, replied) -> tuple[list[Image.Image], list | None, st
             "tag": get_member_label(event.chat.id, answered.from_user),
         }
         if answered.media:
-            reply["mentions"] = list(
-                answered.media.contextInfo.mentionedJID
-            )
+            reply["mentions"] = list(answered.media.contextInfo.mentionedJID)
     name = await sender_name(sender)
     tag = get_member_label(event.chat.id, sender)
     if m := event.reply_to_message.media:
