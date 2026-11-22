@@ -105,13 +105,15 @@ def preview_text(message) -> str:
 # An animated quote's length and frame rate, which keep the sticker within
 # WhatsApp's size limit
 MAX_MS = 6000
-FPS = 12
-MAX_STICKER_BYTES = 500_000
+FPS = 60
+MAX_STICKER_BYTES = 950_000
 
 
 def sticker_frames(webp: bytes) -> tuple[list[Image.Image], list[int]]:
     """An animated sticker's frames, the first MAX_MS of them, at most FPS"""
-    frames, durations, elapsed = [], [], 0
+    frames, durations = [], []
+    elapsed = last_start = 0
+    step = 1000 / FPS
     with Image.open(io.BytesIO(webp)) as image:
         for frame in ImageSequence.Iterator(image):
             if elapsed >= MAX_MS:
@@ -119,13 +121,14 @@ def sticker_frames(webp: bytes) -> tuple[list[Image.Image], list[int]]:
             # A frame's duration is only read once it's loaded
             frame.load()
             duration = frame.info.get("duration") or 100
-            elapsed += duration
-            # Frames quicker than FPS are merged into the one before
-            if durations and durations[-1] < 1000 / FPS:
+            if not frames or elapsed - last_start >= step - 1:
+                frames.append(frame.convert("RGBA"))
+                durations.append(duration)
+                last_start = elapsed
+            else:
+                # Too soon after the last kept frame: it holds a bit longer
                 durations[-1] += duration
-                continue
-            frames.append(frame.convert("RGBA"))
-            durations.append(duration)
+            elapsed += duration
     return frames, durations
 
 
@@ -269,8 +272,26 @@ def animated_sticker(cards: list[Image.Image], durations: list[int]) -> bytes:
             if out.tell() <= MAX_STICKER_BYTES:
                 return out.getvalue()
         if len(frames) < 4:
-            return out.getvalue()
+            if out.tell() <= 1_000_000:
+                return out.getvalue()
+            # Still too big: scale the frames down and try again
+            frames = [
+                f.resize(
+                    (f.width * 3 // 4, f.height * 3 // 4), Image.Resampling.LANCZOS
+                )
+                for f in frames
+            ]
+            if frames[0].width < 200:
+                return out.getvalue()
+            lossless = False
+            continue
         lossless = False
-        # Every other frame, each shown twice as long
-        frames = frames[::2]
-        durations = [sum(durations[i : i + 2]) for i in range(0, len(durations), 2)]
+        # Drop every third frame; the one before it is shown longer
+        kept_frames, kept_durations = [], []
+        for i, (frame, duration) in enumerate(zip(frames, durations)):
+            if i % 3 == 2:
+                kept_durations[-1] += duration
+            else:
+                kept_frames.append(frame)
+                kept_durations.append(duration)
+        frames, durations = kept_frames, kept_durations
