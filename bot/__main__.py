@@ -583,6 +583,29 @@ async def _(client: NewAClient, message: Event):
 
 
 @bot.register(CONCURRENT_AUTO)
+async def delete_werewolf_media(client: NewAClient, event: Event):
+    """Delete media sent by playing members during an active werewolf game."""
+    game = bot.current_games_dict.get("werewolf", {}).get(event.chat.id)
+    if not game or game.waiting or game.ended:
+        return
+
+    # Only delete if sender is a player (alive or dead)
+    sender = event.from_user.id
+    if sender not in game.player_ids:
+        return
+
+    # Check if media
+    if not event.media:
+        return
+
+    # Delete the message
+    try:
+        await event.delete()
+    except Exception:
+        pass
+
+
+@bot.register(CONCURRENT_AUTO)
 async def _(client: NewAClient, message: Event):
     await werewolf_restriction_handler(client, message)
 
