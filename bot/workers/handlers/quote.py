@@ -198,6 +198,7 @@ async def make_quote(event, replied) -> tuple[list[Image.Image], list | None, st
         raise NothingToQuote
     sender = replied.from_user
     # The quoted copy drops what it replied to; the stored message keeps it
+    mentions: [str] = []
     reply = None
     try:
         stored = await get_messages(event.chat.id, replied.id)
@@ -211,9 +212,13 @@ async def make_quote(event, replied) -> tuple[list[Image.Image], list | None, st
             "text": preview_text(answered),
             "tag": get_member_label(event.chat.id, answered.from_user),
         }
+        if answered.reply_to_message.media:
+            reply["mentions"] = list(answered.reply_to_message.media.contextInfo.mentionedJID)
     name = await sender_name(sender)
     tag = get_member_label(event.chat.id, sender)
-    cards = await quote_card(sender.id, sender.jid, name, text, media, reply, tag)
+    if m := event.reply_to_message.media:
+        mentions = list(m.contextInfo.mentionedJID)
+    cards = await quote_card(sender.id, sender.jid, name, text, media, reply, tag, mentions)
     return cards, durations, name
 
 

@@ -8,11 +8,12 @@ import io
 import re
 import zlib
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 from .bot_utils import sync_to_async
 from .card_text import draw_rich, load_emojis, profile_picture, rich_width, wrap
 from .hoyo_cards import ensure_fonts, paste_fit
+from .msg_utils import get_user_info
 from .rank_card import avatar_fallback, fit_rich
 
 AVATAR = 84
@@ -31,6 +32,8 @@ REPLY_SIZE = 24
 # A member's group tag, after their name like WhatsApp shows it
 TAG_COLOUR = (102, 119, 129, 255)
 TAG_SIZE = 22
+# @mentions are drawn in this colour, like WhatsApp's tags
+MENTION_COLOUR = (2, 132, 199, 255)
 SHADOW = 10
 # WhatsApp-like colours for names in groups, dark enough for white
 NAME_COLOURS = [
@@ -56,6 +59,51 @@ def strip_markup(text: str) -> str:
         m = re.escape(mark)
         text = re.sub(rf"(?<![\w{m}]){m}(?=\S)(.+?)(?<=\S){m}(?![\w{m}])", r"\1", text)
     return text
+
+
+async def resolve_mentions(text: str, mentions: list[str]) -> tuple[str, list[str]]:
+    """
+    Replaces @<digits> in text with @<name> for each "digits@server" in
+    mentions. Returns the new text and the "@name" labels to highlight.
+    """
+
+    async def lookup(mention: str):
+        uid, _, server = mention.partition("@")
+        try:
+            info = await get_user_info(uid, server or "s.whatsapp.net")
+        except Exception:
+            info = None
+        name = getattr(info, "PushName", "") or getattr(info, "FullName", "") or ""
+        return uid, re.sub(r"\s+", " ", name).strip() or "unknown"
+
+    labels = []
+    for uid, name in await asyncio.gather(*(lookup(m) for m in mentions)):
+        label = f"@{name}"
+        text = re.sub(rf"@{re.escape(uid)}(?!\d)", lambda _: label, text)
+        labels.append(label)
+    return text, labels
+
+
+def draw_marked(card, draw, xy, text, size, bold, colour, emojis, labels):
+    """draw_rich, with every @label in labels in the mention colour. Returns the end x"""
+    x, y = xy
+    if not labels:
+        return draw_rich(card, draw, (x, y), text, size, bold, colour, emojis)
+    pattern = "|".join(re.escape(l) for l in sorted(set(labels), key=len, reverse=True))
+    for i, part in enumerate(re.split(f"({pattern})", text)):
+        if not part:
+            continue
+        x = draw_rich(
+            card,
+            draw,
+            (x, y),
+            part,
+            size,
+            bold,
+            MENTION_COLOUR if i % 2 == 1 else colour,
+            emojis,
+        )
+    return x
 
 
 # Pillow draws shapes without anti-aliasing; they're drawn this many times
@@ -115,13 +163,13 @@ def _draw_quote(
     name: str,
     colour: tuple,
     text: str,
-    frames: list,
+    media,
     avatar,
     emojis,
     reply: dict | None,
     tag: str = "",
-) -> list[Image.Image]:
-    """The quote, once for each of the media's frames (once without media)"""
+    mentions: list[str] = (),
+) -> bytes:
     lines = wrap(text, TEXT_SIZE, False, MAX_TEXT_W, emojis) if text else []
     line_h = int(TEXT_SIZE * 1.42)
     name_w = rich_width(name, NAME_SIZE, True, emojis)
@@ -134,7 +182,6 @@ def _draw_quote(
     text_w = max(
         (rich_width(line, TEXT_SIZE, False, emojis) for line in lines), default=0
     )
-    media = frames[0] if frames else None
     media_size = (0, 0)
     if media is not None:
         media = media.copy()
@@ -256,7 +303,7 @@ def _draw_quote(
             REPLY_SIZE - 4,
             emojis,
         )
-        draw_rich(
+        draw_marked(
             card,
             draw,
             (x + 22, y + 18 + REPLY_SIZE),
@@ -265,28 +312,28 @@ def _draw_quote(
             False,
             REPLY_TEXT,
             emojis,
+            reply.get("labels", []),
         )
         y += reply_h + 14
-    media_at = (int(x), int(y))
     if media is not None:
+        big = Image.new("L", (media_size[0] * SS, media_size[1] * SS), 0)
+        ImageDraw.Draw(big).rounded_rectangle((0, 0, *big.size), 18 * SS, fill=255)
+        mask = big.resize(media_size, Image.Resampling.LANCZOS)
+        layer = Image.new("RGBA", media_size, (0, 0, 0, 0))
+        layer.paste(media, (0, 0), media if media.mode == "RGBA" else None)
+        card.paste(
+            layer, (int(x), int(y)), Image.composite(layer.getchannel("A"), mask, mask)
+        )
         y += media_size[1] + 14
     for line in lines:
-        draw_rich(card, draw, (x, y), line, TEXT_SIZE, False, TEXT, emojis)
+        draw_marked(
+            card, draw, (x, y), line, TEXT_SIZE, False, TEXT, emojis, mentions
+        )
         y += line_h
-    if media is None:
-        return [card]
 
-    big = Image.new("L", (media_size[0] * SS, media_size[1] * SS), 0)
-    ImageDraw.Draw(big).rounded_rectangle((0, 0, *big.size), 18 * SS, fill=255)
-    mask = big.resize(media_size, Image.Resampling.LANCZOS)
-    cards = []
-    # The bubble is drawn once; each frame only fills the media's place
-    for frame in frames:
-        frame = frame.convert("RGBA").resize(media_size, Image.Resampling.LANCZOS)
-        framed = card.copy()
-        framed.paste(frame, media_at, ImageChops.multiply(frame.getchannel("A"), mask))
-        cards.append(framed)
-    return cards
+    output = io.BytesIO()
+    card.save(output, format="png")
+    return output.getvalue()
 
 
 async def quote_card(
@@ -294,36 +341,51 @@ async def quote_card(
     jid,
     name: str,
     text: str,
-    media: bytes | list[Image.Image] | None,
+    media: bytes | None,
     reply: dict | None = None,
     tag: str = "",
-) -> list[Image.Image]:
+    mentions: list[str] | None = None,
+) -> bytes:
     """
-    A message quoted as a chat bubble (transparent around it), as one image,
-    or one for each frame when media is an animation's frames.
-    reply: {user, name, text, tag} of the message it answered, if any;
-    tag: the sender's group tag.
+    A PNG (transparent around the bubble) of a message quoted as a chat
+    bubble. reply: {user, name, text, tag} of the message it answered, if
+    any; tag: the sender's group tag. mentions: ["digits@lid", ...] tagged
+    in text; reply may carry its own "mentions" list for the replied message.
     """
     text = strip_markup(text or "").strip()
+    text, labels = await resolve_mentions(text, mentions or [])
     if reply:
         first = strip_markup(reply.get("text") or "").strip().split("\n")[0]
-        reply = {**reply, "text": first, "colour": name_colour(reply["user"])}
+        first, reply_labels = await resolve_mentions(first, reply.get("mentions") or [])
+        reply = {
+            **reply,
+            "text": first,
+            "colour": name_colour(reply["user"]),
+            "labels": reply_labels,
+        }
     reply_texts = (
         (reply["name"], reply["text"], reply.get("tag") or "") if reply else ()
     )
     await ensure_fonts(name, text, tag, *reply_texts)
-    frames = []
-    if isinstance(media, list):
-        frames = media
-    elif media:
+    image = None
+    if media:
         try:
-            frames = [Image.open(io.BytesIO(media)).convert("RGBA")]
+            image = Image.open(io.BytesIO(media)).convert("RGBA")
         except Exception:
-            frames = []
+            image = None
     picture, emojis = await asyncio.gather(
         profile_picture(jid), load_emojis(name, text, tag, *reply_texts)
     )
     avatar = picture or avatar_fallback(name, name_colour(user))
     return await sync_to_async(
-        _draw_quote, name, name_colour(user), text, frames, avatar, emojis, reply, tag
+        _draw_quote,
+        name,
+        name_colour(user),
+        text,
+        image,
+        avatar,
+        emojis,
+        reply,
+        tag,
+        labels,
     )
