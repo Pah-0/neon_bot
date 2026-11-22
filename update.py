@@ -124,19 +124,22 @@ def end_pr_test(state, reason, log=""):
 try:
     # Read before git runs: resets and cleans can remove untracked files
     pr_state = read_json(pr_state_file) or {}
-    # Capture the crash log before any git clean can delete it
-    try:
-        pr_state["_crash_log"] = "\n".join(
-            crash_log.read_text(errors="replace").splitlines()[-15:]
-        )
-    except OSError:
-        pr_state["_crash_log"] = ""
-    pr_state_file.write_text(json.dumps(pr_state))
+    # Capture the crash log before any git clean can delete it — but only
+    # when there is actually a PR test in progress; otherwise don't create a
+    # phantom .pr_test that would make pr_state truthy on every run.
+    if pr_state.get("pr"):
+        try:
+            pr_state["_crash_log"] = "\n".join(
+                crash_log.read_text(errors="replace").splitlines()[-15:]
+            )
+        except OSError:
+            pr_state["_crash_log"] = ""
+        pr_state_file.write_text(json.dumps(pr_state))
     old_requirements = requirements_hash()
     revert = len(sys.argv) > 1 and sys.argv[1] == "--revert"
     update = None
     switched = False
-    if revert and pr_state:
+    if revert and pr_state.get("pr"):
         # run.sh saw the bot crash while testing a PR
         code = sys.argv[2] if len(sys.argv) > 2 else "?"
         log = pr_state.get("_crash_log", "")
@@ -144,7 +147,7 @@ try:
         print(
             f"PR #{
                 pr_state.get('pr')} crashed, went back to {UPSTREAM_BRANCH}")
-    elif pr_state and (ALWAYS_DEPLOY_LATEST is True or update_check.is_file()):
+    elif pr_state.get("pr") and (ALWAYS_DEPLOY_LATEST is True or update_check.is_file()):
         if update_to_pr(pr_state["pr"]):
             pr_state["sha"] = short_sha()
             pr_state_file.write_text(json.dumps(pr_state))
