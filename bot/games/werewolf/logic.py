@@ -2,7 +2,7 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 
-from bot import sudo_btn_lock
+from bot import bot, sudo_btn_lock
 from bot.config import conf
 from bot.utils.buttons import choose
 from bot.utils.db_utils import save2db2
