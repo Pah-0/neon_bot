@@ -82,7 +82,7 @@ class NothingToQuote(Exception):
 
 async def sender_name(user) -> str:
     info = await get_user_info(user.id, user.server)
-    return info.PushName or (f"+{user.id}" if user.server != "lid" else "Unknown")
+    return info.PushName or info.FullName or "Unknown"
 
 
 def preview_text(message) -> str:
