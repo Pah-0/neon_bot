@@ -171,8 +171,7 @@ async def werewolf_handler(event, args, client):
         for team in ("wolf", "villager", "neutral"):
             if team in by_team:
                 msg += f"\n*{team.title()} team:*\n"
-                for name, plural, desc in sorted(
-                        by_team[team], key=lambda x: x[0]):
+                for name, plural, desc in sorted(by_team[team], key=lambda x: x[0]):
                     msg += f"- *{name}* ({plural}): {desc}\n"
         return await event.reply(msg)
 
@@ -236,9 +235,7 @@ async def find_target(game, event, target_str):
     The player named by an @mention, LID or +number, else by #id or name,
     else the one whose message was replied to
     """
-    if target_str and not re.fullmatch(
-        r"@?\+?[0-9]{5,16}",
-            target_str.split()[0]):
+    if target_str and not re.fullmatch(r"@?\+?[0-9]{5,16}", target_str.split()[0]):
         return game.get_player_by_id(target_str.lstrip("#")) or next(
             (
                 p
@@ -248,8 +245,7 @@ async def find_target(game, event, target_str):
             None,
         )
     lid, number, _ = await target_user(event, target_str or "")
-    return game.get_player_by_user_id(
-        lid) or game.get_player_by_user_id(number)
+    return game.get_player_by_user_id(lid) or game.get_player_by_user_id(number)
 
 
 async def my_role(event):

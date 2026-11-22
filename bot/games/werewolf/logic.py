@@ -39,17 +39,13 @@ from .roles import roles
 from .stats import record
 
 NIGHT_ACTIONS = {
-    cmd: roles_ for cmd,
-    roles_ in COMMANDS_FOR_ROLE.items() if cmd not in DAY_COMMANDS}
+    cmd: roles_ for cmd, roles_ in COMMANDS_FOR_ROLE.items() if cmd not in DAY_COMMANDS
+}
 SHAMANS = ["shaman", "wolf shaman", "crazed shaman"]
 # roles that can't choose the same player two nights in a row
 NO_REPEAT_TARGET = SHAMANS + ["guardian angel"]
 # totems (and a doomsayer's lycanthropy) that act the night after they're given
-DELAYED_EFFECTS = [
-    "luck_totem",
-    "misdirection_totem",
-    "deceit_totem",
-    "lycanthropy"]
+DELAYED_EFFECTS = ["luck_totem", "misdirection_totem", "deceit_totem", "lycanthropy"]
 
 
 def win_condition(game):
@@ -67,15 +63,13 @@ def win_condition(game):
     living_cultists_minions = [
         p for p in players_alive if p.role in ["cultist", "minion"]
     ]
-    living_sk_num = len(
-        [p for p in players_alive if p.role == "serial killer"])
+    living_sk_num = len([p for p in players_alive if p.role == "serial killer"])
 
     for player in players_alive:
         # injured villagers can't vote so they don't count against the wolves
         if player.is_injured and player.actual_team != "wolf":
             continue
-        if (player.role in ["cultist", "minion"]
-                ) and game.mode != "evilvillage":
+        if (player.role in ["cultist", "minion"]) and game.mode != "evilvillage":
             teams["village"] += 1
         else:
             teams[player.actual_team] += 1
@@ -96,15 +90,19 @@ def win_condition(game):
     ) == len(players_alive):
         win_team = "succubi"
         win_lore = "Game over! The succub{} completely enthralled the village, making them officers in an ever-growing army set on spreading their control and influence throughout the entire world.".format(
-            "i" if len([p for p in game.players.values() if p.original_role == "succubus"]) > 1 else "us")
+            "i"
+            if len([p for p in game.players.values() if p.original_role == "succubus"])
+            > 1
+            else "us"
+        )
     elif len(
         [p for p in players_alive if p.role == "piper" or "charmed" in p.other]
     ) == len(players_alive):
         win_team = "pipers"
-        p_num = len([p for p in game.players.values()
-                    if p.original_role == "piper"])
+        p_num = len([p for p in game.players.values() if p.original_role == "piper"])
         win_lore = "Game over! Everyone has fallen victim to the charms of the piper{0}. The piper{0} lead{1} the villagers away from the village, never to return...".format(
-            get_plurals(p_num), get_plurals(p_num, invert=True))
+            get_plurals(p_num), get_plurals(p_num, invert=True)
+        )
     elif living_sk_num >= len(players_alive) / 2:
         if living_monster_num > 0:
             win_team, win_lore = (
@@ -116,7 +114,8 @@ def win_condition(game):
         else:
             win_team = "serial killers"
             win_lore = "Game over! The serial killer{0} stabbed all those in the village! The serial killer{0} walk{1} off, in the hope to successfully do the same at another location.".format(
-                get_plurals(living_sk_num), get_plurals(living_sk_num, invert=True))
+                get_plurals(living_sk_num), get_plurals(living_sk_num, invert=True)
+            )
     elif teams["village"] + teams["neutral"] <= teams["wolf"] and not (
         game.mode == "evilvillage" and teams["village"]
     ):
@@ -125,7 +124,8 @@ def win_condition(game):
                 if living_monster_num > 0:
                     win_team = "monster"
                     win_lore = "Game over! All the villagers are dead! As the cultists rejoice, they get destroyed by the monster{0}, causing the monster{0} to win.".format(
-                        get_plurals(living_monster_num))
+                        get_plurals(living_monster_num)
+                    )
                 elif not (len(players_alive) - len(living_cultists_minions)):
                     win_team = "no win"
                     win_lore = "Game over! All the villagers are dead, but the cult needed to sacrifice the wolves to accomplish that. The cult disperses shortly thereafter, and nobody wins."
@@ -135,7 +135,8 @@ def win_condition(game):
         elif living_monster_num > 0:
             win_team = "monster"
             win_lore = "Game over! The number of uninjured villagers is equal or less than the number of living wolves! The wolves overpower the villagers but then get destroyed by the monster{0}, causing the monster{0} to win.".format(
-                get_plurals(living_monster_num))
+                get_plurals(living_monster_num)
+            )
         else:
             win_team = "wolf"
             win_lore = "The number of uninjured villagers is equal or less than the number of living wolves! The wolves overpower the remaining villagers and devour them whole."
@@ -153,7 +154,9 @@ def win_condition(game):
         if living_monster_num > 0:
             win_team = "monster"
             win_lore = "Game over! All the wolves are dead! As the villagers start preparing the BBQ, the monster{0} quickly kill{1} the remaining villagers, causing the monster{0} to win.".format(
-                get_plurals(living_monster_num), get_plurals(living_monster_num, invert=True), )
+                get_plurals(living_monster_num),
+                get_plurals(living_monster_num, invert=True),
+            )
         else:
             if (
                 len(living_cultists_minions) == teams["wolf"]
@@ -168,7 +171,9 @@ def win_condition(game):
         if living_monster_num > 0:
             win_team = "monster"
             win_lore = "Game over! The number of uninjured cultists is equal or less than the number of living villagers! as the villagers regain control over the village, the monster{0} quickly kill{1} the remaining villagers, causing the monster{0} to win.".format(
-                get_plurals(living_monster_num), get_plurals(living_monster_num, invert=True), )
+                get_plurals(living_monster_num),
+                get_plurals(living_monster_num, invert=True),
+            )
         elif not living_cultists_minions:
             win_team = "village"
             win_lore = "Game over! All the cultists are dead! The now-exposed wolves are captured and killed by the remaining villagers. A BBQ party commences shortly thereafter."
@@ -408,8 +413,7 @@ async def night_start_effects(game):
         if "hexed" in p.other:
             continue
         if p.role == "mystic":
-            wolves = sum(
-                x.actual_team == "wolf" for x in game.players_alive_list)
+            wolves = sum(x.actual_team == "wolf" for x in game.players_alive_list)
             await game.send_pm(p, f"You sense that there are *{wolves}* wolves.")
         elif p.role == "wolf mystic":
             powered = sum(
@@ -436,9 +440,7 @@ async def night_start_effects(game):
 def redirect(game, actor, target):
     """Misdirection (on the actor) or luck (on the target) sends an action elsewhere"""
     if "misdirection_totem2" in actor.other or "luck_totem2" in target.other:
-        others = [
-            p for p in game.players_alive_list if p not in (
-                actor, target)]
+        others = [p for p in game.players_alive_list if p not in (actor, target)]
         if others:
             return random.choice(others)
     return target
@@ -493,8 +495,7 @@ async def request_doom(game, player):
 
 async def request_assassin_target(game, player):
     """The assassin picks who they'll take with them when they die."""
-    options = {p.user_id: _label(p)
-               for p in game.players_alive_list if p is not player}
+    options = {p.user_id: _label(p) for p in game.players_alive_list if p is not player}
     try:
         choice = await choose(
             player.jid,
@@ -514,8 +515,7 @@ async def request_assassin_target(game, player):
 
 async def request_bless(game, player):
     """The priest may bless someone, once a game, during the day."""
-    options = {p.user_id: _label(p)
-               for p in game.players_alive_list if p is not player}
+    options = {p.user_id: _label(p) for p in game.players_alive_list if p is not player}
     options["pass"] = "Not today"
     try:
         choice = await choose(
@@ -577,8 +577,7 @@ async def request_totem(game, player):
 
 async def request_observe(game, player):
     """The werecrow picks who to watch."""
-    options = {p.user_id: _label(p)
-               for p in game.players_alive_list if p is not player}
+    options = {p.user_id: _label(p) for p in game.players_alive_list if p is not player}
     await _request_second_target(
         game,
         player,
@@ -672,9 +671,7 @@ async def request_night_action(game, player, is_night_zero):
     elif wolf_killer and getattr(game, "wolf_kills", 1) > 1:
         prompt = "You are enraged: select 2 to kill, then Confirm:"
     selectable, conf_btn = 1, None
-    if player.role in [
-        "matchmaker",
-            "piper"] or prompt.startswith("You are enraged"):
+    if player.role in ["matchmaker", "piper"] or prompt.startswith("You are enraged"):
         # every vote change is a new poll update; wait for an explicit confirm
         conf_btn = "Confirm"
         options["confirm"] = [conf_btn]
@@ -775,10 +772,8 @@ async def process_night_zero(game):
             if len(uids) != 2 or uids[0] == uids[1]:
                 # no choice: random lovers, and the matchmaker isn't told who
                 uids = [
-                    x.user_id for x in random.sample(
-                        list(
-                            game.players.values()),
-                        2)]
+                    x.user_id for x in random.sample(list(game.players.values()), 2)
+                ]
             if len(uids) == 2:
                 p1, p2 = game.get_player_by_user_id(
                     uids[0]
@@ -826,8 +821,7 @@ async def process_night(game):
             target = _target(game, p)
         if not (target and target.is_alive):
             # an ungiven totem goes to someone at random
-            others = [
-                x for x in game.players_alive_list if x.user_id != p.last_target]
+            others = [x for x in game.players_alive_list if x.user_id != p.last_target]
             if not others:
                 continue
             target = random.choice(others)
@@ -850,12 +844,7 @@ async def process_night(game):
             )
     protected_uids = []
     for p in game.players_alive_list:
-        if p.role in [
-                "guardian angel",
-                "bodyguard"] and (
-                target := _target(
-                game,
-                p)):
+        if p.role in ["guardian angel", "bodyguard"] and (target := _target(game, p)):
             protected_uids.append(target.user_id)
         if "protection_totem" in p.other:
             protected_uids.append(p.user_id)
@@ -867,8 +856,7 @@ async def process_night(game):
         if p.team == "wolf" and p.role in COMMANDS_FOR_ROLE["kill"]
     ]
     for w in wolves:
-        for uid in w.target.split(
-                ",") if w.target and w.target != "pass" else []:
+        for uid in w.target.split(",") if w.target and w.target != "pass" else []:
             if (target := game.get_player_by_user_id(uid)) and target.is_alive:
                 wolf_targets[uid] = wolf_targets.get(uid, 0) + 1
     # a dead wolf cub's rage is spent tonight
@@ -888,23 +876,14 @@ async def process_night(game):
             killed.append(target_uid)
             wolf_victims.append(target_uid)
     for p in game.players_alive_list:
-        if p.role in [
-                "serial killer",
-                "hunter"] and (
-                target := _target(
-                game,
-                p)):
+        if p.role in ["serial killer", "hunter"] and (target := _target(game, p)):
             if p.role == "hunter":
                 p.add_other("hunted")
             if target.user_id not in protected_uids:
                 killed.append(target.user_id)
         if "death_totem" in p.other:
             killed.append(p.user_id)
-        if p.role == "doomsayer" and (
-            doomed := getattr(
-                p,
-                "doom_target",
-                None)):
+        if p.role == "doomsayer" and (doomed := getattr(p, "doom_target", None)):
             p.doom_target = None
             if doomed not in protected_uids:
                 killed.append(doomed)
@@ -960,8 +939,7 @@ async def process_night(game):
     killed_msg += await gunner_revenge(game, wolf_victims, wolves)
     # the hot potato swaps identities with their (living) choice
     for potato in game.players_alive_list:
-        if potato.role != "hot potato" or not (
-                target := _target(game, potato)):
+        if potato.role != "hot potato" or not (target := _target(game, potato)):
             continue
         if not target.is_alive or target is potato:
             continue
@@ -1023,8 +1001,9 @@ def shot_outcome(shooter, target):
             ["suicide"] * suicide + ["miss"] * (miss + headshot + injure)
         )
     elif target.role == "succubus":
-        return random.choice(["suicide"] * suicide + ["miss"]
-                             * (miss + headshot) + ["injure"] * injure)
+        return random.choice(
+            ["suicide"] * suicide + ["miss"] * (miss + headshot) + ["injure"] * injure
+        )
     if sharpshooter:
         return "killvictim"
     return random.choice(
@@ -1161,12 +1140,8 @@ async def day_phase(game):
             ):
                 lynched_uid = "abstain"
                 break
-            on_players = {
-                uid: n for uid,
-                n in counts.items() if uid != "abstain"}
-            if on_players and (
-                top := max(
-                    on_players.values())) >= game.votes_to_lynch:
+            on_players = {uid: n for uid, n in counts.items() if uid != "abstain"}
+            if on_players and (top := max(on_players.values())) >= game.votes_to_lynch:
                 lynched_uid = random.choice(
                     [uid for uid, n in on_players.items() if n == top]
                 )
@@ -1191,8 +1166,7 @@ async def day_phase(game):
                 "Not enough votes were cast to lynch a player."
             )
         top = max(counts.values())
-        leaders = [uid for uid, n in counts.items() if n ==
-                   top and uid != "abstain"]
+        leaders = [uid for uid, n in counts.items() if n == top and uid != "abstain"]
         if not leaders:
             lynched_uid = "abstain"
         elif len(leaders) > 1:
@@ -1218,8 +1192,7 @@ async def day_phase(game):
     p.is_lynched = True
     p.add_other("lynched")
     record(p.user_id, lynched=1)
-    clockers = [
-        v.user_id for v in game.players_alive_list if v.vote == p.user_id]
+    clockers = [v.user_id for v in game.players_alive_list if v.vote == p.user_id]
     if p.actual_team != "village":
         # lynching a nefarious role: voters "clock" them
         for v_id in clockers:
