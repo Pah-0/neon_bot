@@ -531,6 +531,8 @@ async def were_info(event, args, client):
     msg += f"To start now: `{conf.CMD_PREFIX}werewolf --start`\n"
     msg += f"To set mode: `{conf.CMD_PREFIX}werewolf --mode <mode>`\n"
     msg += f"To see modes: `{conf.CMD_PREFIX}werewolf --mode all`\n"
+    msg += f"To see a role: `{conf.CMD_PREFIX}werewolf --role <name>`\n"
+    msg += f"To see all roles: `{conf.CMD_PREFIX}werewolf --role all`\n"
     msg += "Dead players' messages are deleted while a game runs (I need to be an admin).\n"
     msg += "Restricted mode (only living players can talk: the group goes admins-only and they're made admins until they die; I must have created the group): add `-r` to `-j`, `--start` or `--mode`\n"
     msg += "Lobbies auto-start after 3 minutes without joins/leaves.\n\n"
