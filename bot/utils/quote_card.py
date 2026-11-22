@@ -329,9 +329,25 @@ def _draw_quote(
         draw_marked(card, draw, (x, y), line, TEXT_SIZE, False, TEXT, emojis, mentions)
         y += line_h
 
-    output = io.BytesIO()
-    card.save(output, format="png")
-    return output.getvalue()
+    return card
+
+
+def _draw_frames(name, colour, text, frames, avatar, emojis, reply, tag, mentions):
+    """One card per frame; a still has a single frame (None if no media)"""
+    return [
+        _draw_quote(
+            name,
+            colour,
+            text,
+            frame,
+            avatar,
+            emojis,
+            dict(reply) if reply else None,  # _draw_quote edits it in place
+            tag,
+            mentions,
+        )
+        for frame in frames
+    ]
 
 
 async def quote_card(
@@ -339,16 +355,18 @@ async def quote_card(
     jid,
     name: str,
     text: str,
-    media: bytes | None,
+    media: bytes | list[Image.Image] | None,
     reply: dict | None = None,
     tag: str = "",
     mentions: list[str] | None = None,
-) -> bytes:
+) -> list[Image.Image]:
     """
-    A PNG (transparent around the bubble) of a message quoted as a chat
-    bubble. reply: {user, name, text, tag} of the message it answered, if
-    any; tag: the sender's group tag. mentions: ["digits@lid", ...] tagged
-    in text; reply may carry its own "mentions" list for the replied message.
+    The message quoted as a chat bubble: a list of RGBA images (transparent
+    around the bubble), one per frame of media if it's moving, else one.
+    media: image bytes, a list of frames, or None. reply: {user, name, text,
+    tag} of the message it answered, if any; tag: the sender's group tag.
+    mentions: ["digits@lid", ...] tagged in text; reply may carry its own
+    "mentions" list for the replied message.
     """
     text = strip_markup(text or "").strip()
     text, labels = await resolve_mentions(text, mentions or [])
@@ -365,22 +383,26 @@ async def quote_card(
         (reply["name"], reply["text"], reply.get("tag") or "") if reply else ()
     )
     await ensure_fonts(name, text, tag, *reply_texts)
-    image = None
-    if media:
+
+    frames = [None]
+    if isinstance(media, list):
+        frames = media or [None]
+    elif media:
         try:
-            image = Image.open(io.BytesIO(media)).convert("RGBA")
+            frames = [Image.open(io.BytesIO(media)).convert("RGBA")]
         except Exception:
-            image = None
+            pass
+
     picture, emojis = await asyncio.gather(
         profile_picture(jid), load_emojis(name, text, tag, *reply_texts)
     )
     avatar = picture or avatar_fallback(name, name_colour(user))
     return await sync_to_async(
-        _draw_quote,
+        _draw_frames,
         name,
         name_colour(user),
         text,
-        image,
+        frames,
         avatar,
         emojis,
         reply,
