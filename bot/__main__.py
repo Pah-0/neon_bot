@@ -276,6 +276,21 @@ async def _(client: NewAClient, message: Event):
     await event_handler(message, werewolf_handler, client)
 
 
+@bot.register("wwstats")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
+@bot.register("wwrank")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
+@bot.register("wwrankings")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
 @bot.register("cmds")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, getcmds)
