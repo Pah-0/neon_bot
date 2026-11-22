@@ -10,7 +10,7 @@ roles = {
     "werecrow": [
         "wolf",
         "werecrows",
-        "You are part of the wolfteam. Each night, i'll send you buttons here to vote on who to kill, and to observe someone. "
+        "You are part of the wolfteam. Each night, i'll send you buttons here to vote on who to kill, and to observe a good (villager-team) player. "
         "You'll learn whether they were in bed (they used no night ability, so likely a plain villager) "
         "or out of bed (they acted at night, so likely a role with a power).",
     ],
