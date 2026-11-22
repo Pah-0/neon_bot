@@ -576,12 +576,8 @@ async def request_totem(game, player):
 
 
 async def request_observe(game, player):
-    """The werecrow picks who to watch — only good (villager-team) players."""
-    options = {
-        p.user_id: _label(p)
-        for p in game.players_alive_list
-        if p is not player and p.team == "villager"
-    }
+    """The werecrow picks who to watch."""
+    options = {p.user_id: _label(p) for p in game.players_alive_list if p is not player}
     await _request_second_target(
         game,
         player,

@@ -10,9 +10,10 @@ roles = {
     "werecrow": [
         "wolf",
         "werecrows",
-        "You are part of the wolfteam. Each night, i'll send you buttons here to vote on who to kill, and to observe a good (villager-team) player. "
-        "You'll learn whether they were in bed (they used no night ability, so likely a plain villager) "
-        "or out of bed (they acted at night, so likely a role with a power).",
+        "You are part of the wolfteam. Each night, i'll send you buttons here to vote on who to kill, and to observe someone. "
+        "You'll learn whether they were in bed all night (roles that act optionally or once per game — matchmakers, hunters, clones, assassins, turncoats — count as in bed even if they acted) "
+        "or out of bed (Nocturnal roles that must use their power every night, such as harlot even if they stay home). "
+        "You can both observe and kill in the same night.",
     ],
     "wolf cub": [
         "wolf",
