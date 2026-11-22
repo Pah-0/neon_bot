@@ -124,9 +124,14 @@ def end_pr_test(state, reason, log=""):
 try:
     # Read before git runs: resets and cleans can remove untracked files
     pr_state = read_json(pr_state_file) or {}
+    # If a stale .pr_test lingers from before this fix (no active pr key),
+    # delete it so it can't be misread as an in-progress PR test.
+    if pr_state_file.exists() and not pr_state.get("pr"):
+        pr_state_file.unlink(missing_ok=True)
+        pr_state = {}
+
     # Capture the crash log before any git clean can delete it — but only
-    # when there is actually a PR test in progress; otherwise don't create a
-    # phantom .pr_test that would make pr_state truthy on every run.
+    # when there is actually a PR test in progress.
     if pr_state.get("pr"):
         try:
             pr_state["_crash_log"] = "\n".join(
