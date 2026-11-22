@@ -15,7 +15,10 @@ from bot.games.werewolf.logic import (
     redirect,
     shot_outcome,
 )
+from bot.games.werewolf.rank import CATEGORY_CONFIG, send_ww_rank
 from bot.games.werewolf.roles import gamemodes
+from bot.games.werewolf.stats import get as stats_get
+from bot.games.werewolf.stats import record
 from bot.utils.buttons import on_button, send_buttons
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import (
@@ -26,9 +29,6 @@ from bot.utils.msg_utils import (
 )
 from bot.utils.sudo_button_utils import active_poll_dict, create_sudo_button
 from bot.utils.user_utils import show_ids, target_user
-from bot.games.werewolf.stats import get as stats_get
-from bot.games.werewolf.stats import record
-from bot.games.werewolf.rank import send_ww_rank, CATEGORY_CONFIG
 
 
 async def werewolf_handler(event, args, client):
@@ -432,7 +432,16 @@ async def show_wwstats(event):
     user_info = await get_user_info(event.from_user.id)
     name = user_info.PushName or user_info.FullName or event.from_user.name
     msg = f"*{name}'s Werewolf Stats*\n"
-    for key in ("games", "wins", "losses", "lynched", "deaths", "clocked", "wrong_lynched", "shots"):
+    for key in (
+        "games",
+        "wins",
+        "losses",
+        "lynched",
+        "deaths",
+        "clocked",
+        "wrong_lynched",
+        "shots",
+    ):
         label_map = {
             "games": "Games",
             "wins": "Wins",

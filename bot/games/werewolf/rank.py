@@ -1,12 +1,8 @@
 """Werewolf leaderboards drawn as cards, from the global player stats."""
 
-import asyncio
 from bot import bot
-from bot.utils.hoyo_cards import ensure_fonts, font
-from bot.utils.card_text import load_emojis
 from bot.utils.msg_utils import get_user_info
 from bot.utils.rank_card import ranking_card
-
 
 CATEGORY_CONFIG = {
     "most_lynched": {
@@ -100,7 +96,11 @@ async def _build_rows(category: str, limit: int = 10) -> list[dict]:
         except Exception:
             info = None
         name = (
-            (getattr(info, "PushName", None) or getattr(info, "FullName", None) or "Unknown")
+            (
+                getattr(info, "PushName", None)
+                or getattr(info, "FullName", None)
+                or "Unknown"
+            )
             if info
             else "Unknown"
         )
@@ -128,7 +128,11 @@ async def send_ww_rank(chat, category: str, final: bool = False) -> None:
     members = len(rows)
 
     subtitle = cfg["subtitle"].format(period="Global", total=total)
-    totals_text = cfg["totals"].format(total=total, members=members) if "{members}" in cfg["totals"] else cfg["totals"].format(total=total)
+    totals_text = (
+        cfg["totals"].format(total=total, members=members)
+        if "{members}" in cfg["totals"]
+        else cfg["totals"].format(total=total)
+    )
 
     data = {
         "rows": rows,
@@ -141,10 +145,6 @@ async def send_ww_rank(chat, category: str, final: bool = False) -> None:
 
     card_bytes = await ranking_card(data)
     try:
-        await bot.client.send_image(
-            chat, card_bytes, "", mentions_are_lids=False
-        )
+        await bot.client.send_image(chat, card_bytes, "", mentions_are_lids=False)
     except Exception:
         await bot.client.send_message(chat, f"*{cfg['label']} leaderboard is empty*")
-
-

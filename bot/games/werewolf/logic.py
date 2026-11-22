@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from bot import sudo_btn_lock
 from bot.config import conf
 from bot.utils.buttons import choose
+from bot.utils.db_utils import save2db2
 from bot.utils.log_utils import logger
 from bot.utils.sudo_button_utils import (
     active_poll_dict,
@@ -36,7 +37,6 @@ from .defaults import (
 from .lock import lock_group, unlock_group
 from .roles import roles
 from .stats import record
-from bot.utils.db_utils import save2db2
 
 NIGHT_ACTIONS = {
     cmd: roles_ for cmd, roles_ in COMMANDS_FOR_ROLE.items() if cmd not in DAY_COMMANDS
