@@ -16,7 +16,7 @@ from bot.games.werewolf.logic import (
     shot_outcome,
 )
 from bot.games.werewolf.rank import CATEGORY_CONFIG, send_ww_rank
-from bot.games.werewolf.roles import gamemodes
+from bot.games.werewolf.roles import gamemodes, roles
 from bot.games.werewolf.stats import get as stats_get
 from bot.games.werewolf.stats import record
 from bot.utils.buttons import on_button, send_buttons
@@ -104,6 +104,7 @@ async def werewolf_handler(event, args, client):
         return await were_info(event, args, client)
     arg, args = get_args(
         "--mode",
+        "--roles",
         ["-j", "store_true"],
         ["-l", "store_true"],
         ["-s", "store_true"],
@@ -159,6 +160,21 @@ async def werewolf_handler(event, args, client):
             game.restricted = True
 
         return await start_game(event, game)
+
+    if arg.roles:
+        msg = "*Werewolf Roles:*\n"
+        by_team = {}
+        for name, (team, plural, desc) in roles.items():
+            if team == "template":
+                continue
+            by_team.setdefault(team, []).append((name, plural, desc))
+        for team in ("wolf", "villager", "neutral"):
+            if team in by_team:
+                msg += f"\n*{team.title()} team:*\n"
+                for name, plural, desc in sorted(
+                        by_team[team], key=lambda x: x[0]):
+                    msg += f"- *{name}* ({plural}): {desc}\n"
+        return await event.reply(msg)
 
     if arg.mode:
         if game and not isinstance(game, dict) and not game.waiting:
@@ -220,7 +236,9 @@ async def find_target(game, event, target_str):
     The player named by an @mention, LID or +number, else by #id or name,
     else the one whose message was replied to
     """
-    if target_str and not re.fullmatch(r"@?\+?[0-9]{5,16}", target_str.split()[0]):
+    if target_str and not re.fullmatch(
+        r"@?\+?[0-9]{5,16}",
+            target_str.split()[0]):
         return game.get_player_by_id(target_str.lstrip("#")) or next(
             (
                 p
@@ -230,7 +248,8 @@ async def find_target(game, event, target_str):
             None,
         )
     lid, number, _ = await target_user(event, target_str or "")
-    return game.get_player_by_user_id(lid) or game.get_player_by_user_id(number)
+    return game.get_player_by_user_id(
+        lid) or game.get_player_by_user_id(number)
 
 
 async def my_role(event):

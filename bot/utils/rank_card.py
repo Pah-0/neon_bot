@@ -38,7 +38,12 @@ PLACE_COLOURS = {1: (214, 170, 60), 2: (168, 176, 190), 3: (196, 124, 72)}
 MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
 
 
-def fit_rich(text: str, size: int, bold: bool, width: float, emojis: dict) -> str:
+def fit_rich(
+        text: str,
+        size: int,
+        bold: bool,
+        width: float,
+        emojis: dict) -> str:
     """text cut with "…" to fit width"""
     if rich_width(text, size, bold, emojis) <= width:
         return text
@@ -55,7 +60,8 @@ def avatar_fallback(name: str, colour: tuple) -> Image.Image:
     draw.ellipse((0, 0, size - 1, size - 1), fill=colour + (255,))
     letter = next((c for c in name if c.isalnum()), "?").upper()
     face = font(56, True, letter)
-    draw.text(((size - face.getlength(letter)) / 2, 18), letter, font=face, fill=WHITE)
+    draw.text(((size - face.getlength(letter)) / 2, 18),
+              letter, font=face, fill=WHITE)
     return image
 
 
@@ -102,8 +108,14 @@ def blurred_backdrop(picture: Image.Image, size: tuple) -> Image.Image:
 
 
 def put_medal(
-    card, draw, emojis: dict, x: float, y: float, place: int, size: int, text_size: int
-):
+        card,
+        draw,
+        emojis: dict,
+        x: float,
+        y: float,
+        place: int,
+        size: int,
+        text_size: int):
     """
     The place's medal emoji in a size square at x, y; a plain disc with the
     place on it if the emoji couldn't be fetched
@@ -124,7 +136,14 @@ def put_medal(
     )
 
 
-def _medal(card, draw, emojis: dict, x: float, y: float, place: int, count: int):
+def _medal(
+        card,
+        draw,
+        emojis: dict,
+        x: float,
+        y: float,
+        place: int,
+        count: int):
     """A gold/silver/bronze medal with its count; returns the right edge"""
     # Kept clear of the share bar above
     put_medal(card, draw, emojis, x, y + 1, place, 22, 12)
@@ -152,29 +171,24 @@ def _draw_ranking(
     final = data.get("final")
     if picture is not None:
         # Faded to clear, so the backdrop shows through below and to the right
-        put(
-            card,
-            gradient((CW, HEADER_H), accent + (190,), accent + (0,), horizontal=True),
-        )
+        put(card, gradient((CW, HEADER_H), accent +
+                           (190,), accent + (0,), horizontal=True), )
         put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (90,)))
     else:
-        put(
-            card,
-            gradient(
-                (CW, HEADER_H), accent + (255,), BACKGROUND + (255,), horizontal=True
-            ),
-        )
+        put(card, gradient((CW, HEADER_H), accent +
+                           (255,), BACKGROUND + (255,), horizontal=True), )
         put(card, gradient((CW, HEADER_H), (0, 0, 0, 0), BACKGROUND + (255,)))
-    title = data.get("title") or ("Final Standings" if final else "Message Leaderboard")
+    title = data.get("title") or (
+        "Final Standings" if final else "Message Leaderboard")
     draw.text((40, 34), title, font=font(46, True), fill=WHITE)
     if final:
         label = final.upper()
         face = font(20, True)
         lw = text_width(label, face) + 32
-        panel(
-            card, (CW - 40 - lw, 44, CW - 40, 80), radius=18, fill=FINAL_ACCENT + (255,)
-        )
-        draw.text((CW - 40 - lw + 16, 49), label, font=face, fill=(20, 20, 30, 255))
+        panel(card, (CW - 40 - lw, 44, CW - 40, 80),
+              radius=18, fill=FINAL_ACCENT + (255,))
+        draw.text((CW - 40 - lw + 16, 49), label,
+                  font=face, fill=(20, 20, 30, 255))
     subtitle = data.get("subtitle") or " · ".join(
         p for p in (data.get("group"), data.get("period")) if p
     )
@@ -191,10 +205,8 @@ def _draw_ranking(
     unit_plural = data.get("unit_plural", unit + "s")
     top = max((r["count"] for r in rows), default=1) or 1
     # Names and bars run up to the widest count on the right
-    count_w = max(
-        [text_width(human_format_num(r["count"]), font(34, True)) for r in rows]
-        + [text_width(unit_plural, font(18))]
-    )
+    count_w = max([text_width(human_format_num(r["count"]), font(34, True))
+                   for r in rows] + [text_width(unit_plural, font(18))])
     name_w = CW - 54 - count_w - 32 - 192
     for i, row in enumerate(rows):
         y = HEADER_H + i * (ROW_H + ROW_GAP)
@@ -214,12 +226,14 @@ def _draw_ranking(
             draw.ellipse((46, y + 23, 94, y + 71), fill=(60, 62, 76, 255))
             face = font(24 if place < 100 else 18, True)
             text = str(place)
-            draw.text(
-                (70 - text_width(text, face) / 2, y + 31), text, font=face, fill=WHITE
-            )
+            draw.text((70 - text_width(text, face) / 2, y + 31),
+                      text, font=face, fill=WHITE)
 
         # Profile picture, ringed in the place colour for the top three
-        avatar = avatars.get(row["user"]) or avatar_fallback(row["name"], accent)
+        avatar = avatars.get(
+            row["user"]) or avatar_fallback(
+            row["name"],
+            accent)
         if colour:
             draw.ellipse((108, y + 13, 176, y + 81), fill=colour + (255,))
         paste_fit(card, avatar, (112, y + 17, 172, y + 77), circle=True)
@@ -229,8 +243,16 @@ def _draw_ranking(
         draw_rich(card, draw, (192, y + 9), name, 26, True, WHITE, emojis)
         if data.get("track", False):
             draw.rounded_rectangle(
-                (192, y + 49, 192 + name_w, y + 59), 5, fill=(255, 255, 255, 30)
-            )
+                (192,
+                 y + 49,
+                 192 + name_w,
+                 y + 59),
+                5,
+                fill=(
+                    255,
+                    255,
+                    255,
+                    30))
         share = max(row["count"] / top, 0.02)
         draw.rounded_rectangle(
             (192, y + 49, 192 + name_w * share, y + 59),
@@ -290,7 +312,8 @@ async def ranking_card(data: dict) -> bytes:
     names = [data.get("group") or "", *(r["name"] for r in rows)]
     await ensure_fonts(*names)
     group_jid = data.get("jid")
-    group_picture = profile_picture(group_jid) if group_jid else asyncio.sleep(0)
+    group_picture = profile_picture(
+        group_jid) if group_jid else asyncio.sleep(0)
     pictures, emojis, picture = await asyncio.gather(
         asyncio.gather(*(profile_picture(r["jid"]) for r in rows)),
         load_emojis(*names, *MEDALS.values()),

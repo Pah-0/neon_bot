@@ -85,7 +85,11 @@ class Game:
     @property
     def votable_modes(self):
         """The modes picked by chance, which players can vote for"""
-        return [m for m, data in gamemodes.items() if data.get("chance", 0) > 0]
+        return [
+            m for m,
+            data in gamemodes.items() if data.get(
+                "chance",
+                0) > 0]
 
     def select_mode_by_chance(self):
         """
@@ -117,7 +121,8 @@ class Game:
     @property
     def min_players(self):
         if self.requested_mode:
-            return gamemodes[self.requested_mode].get("min_players", MIN_PLAYERS)
+            return gamemodes[self.requested_mode].get(
+                "min_players", MIN_PLAYERS)
         return MIN_PLAYERS
 
     @property
@@ -166,7 +171,8 @@ class Game:
             _id = random.randint(1000, 9980)
             if _id not in bot.current_games_dict.get("werewolf_ids", []):
                 self.game_id = _id
-                bot.current_games_dict.setdefault("werewolf_ids", []).append(_id)
+                bot.current_games_dict.setdefault(
+                    "werewolf_ids", []).append(_id)
 
         to_assign = list(self.player_ids)
         random.shuffle(to_assign)
@@ -178,9 +184,8 @@ class Game:
         for i, user_id in enumerate(to_assign):
             role = self.role_pool[i]
             player_name = self.player_names.get(user_id, "Unknown")
-            player = Player(
-                role, i + 1, user_id, player_name, self.player_jids.get(user_id)
-            )
+            player = Player(role, i + 1, user_id, player_name,
+                            self.player_jids.get(user_id))
             self.players[user_id] = player
             if role == "amnesiac":
                 player.hidden_role = random.choice(
@@ -201,7 +206,8 @@ class Game:
                     if player.role in ACTUAL_WOLVES + ["seer", "fool"]:
                         continue
                 elif template == "assassin":
-                    if player.role in ACTUAL_WOLVES + ["oracle", "seer", "augur"]:
+                    if player.role in ACTUAL_WOLVES + \
+                            ["oracle", "seer", "augur"]:
                         continue
                 elif template in ["mayor", "bishop"]:
                     if player.team != "villager":
@@ -302,7 +308,10 @@ class Game:
         votes = {}
         for uid, mode in self.mode_votes.items():
             if uid in self.player_ids:
-                votes.setdefault(mode, []).append(self.player_names.get(uid, "?"))
+                votes.setdefault(
+                    mode, []).append(
+                    self.player_names.get(
+                        uid, "?"))
         msg = (
             f"*{self.total_players}* players in the lobby, "
             f"*{self.total_players // 2 + 1}* votes choose a mode outright; "
@@ -314,7 +323,8 @@ class Game:
         if not votes:
             return msg + "No one has voted for a mode yet."
         for mode, names in sorted(votes.items(), key=lambda kv: -len(kv[1])):
-            unfit = "" if self.mode_fits(mode) else " - wrong player count for it"
+            unfit = "" if self.mode_fits(
+                mode) else " - wrong player count for it"
             msg += f"- {mode}: {len(names)} ({', '.join(names)}){unfit}\n"
         return msg.rstrip()
 
@@ -401,7 +411,8 @@ class Game:
             msg += "\n\nYou are in love with: " + ", ".join(
                 f"*{x.name}*" for x in lovers if x
             )
-        wolfchat = [w for w in self.players_alive_list if w.role in WOLFCHAT_ROLES]
+        wolfchat = [
+            w for w in self.players_alive_list if w.role in WOLFCHAT_ROLES]
         if p in wolfchat and len(wolfchat) > 1:
             msg += "\n\nYour team: " + ", ".join(
                 f"{w.name} ({w.role})" for w in wolfchat if w is not p
@@ -608,7 +619,8 @@ class Game:
                 "The wolf will do whatever it takes to avenge their parents!*"
             )
         if not wolves:
-            traitors = [p for p in self.players_alive_list if p.role == "traitor"]
+            traitors = [
+                p for p in self.players_alive_list if p.role == "traitor"]
             for t in traitors:
                 t.role = "wolf"
                 t.team = "wolf"
