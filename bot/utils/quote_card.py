@@ -326,9 +326,7 @@ def _draw_quote(
         )
         y += media_size[1] + 14
     for line in lines:
-        draw_marked(
-            card, draw, (x, y), line, TEXT_SIZE, False, TEXT, emojis, mentions
-        )
+        draw_marked(card, draw, (x, y), line, TEXT_SIZE, False, TEXT, emojis, mentions)
         y += line_h
 
     output = io.BytesIO()
