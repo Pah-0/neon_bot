@@ -117,12 +117,12 @@ async def _build_rows(category: str, limit: int = 10) -> list[dict]:
     return rows
 
 
-async def send_ww_rank(chat, category: str, final: bool = False) -> None:
+async def send_ww_rank(chat, category: str, final: bool = False) -> str:
     """Send a werewolf leaderboard card for the given category."""
     cfg = CATEGORY_CONFIG[category]
     rows = await _build_rows(category)
     if not rows:
-        return
+        return "No players have stats yet."
 
     total = len(bot.werewolf_stats)
     members = len(rows)
@@ -146,5 +146,6 @@ async def send_ww_rank(chat, category: str, final: bool = False) -> None:
     card_bytes = await ranking_card(data)
     try:
         await bot.client.send_image(chat, card_bytes, "", mentions_are_lids=False)
-    except Exception:
-        await bot.client.send_message(chat, f"*{cfg['label']} leaderboard is empty*")
+        return "Leaderboard sent."
+    except Exception as e:
+        return f"Failed to send leaderboard: {e}"

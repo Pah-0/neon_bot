@@ -334,7 +334,7 @@ async def group_thumbnail(client, target) -> bytes | None:
         return None
 
 
-async def send_invite(client, target, name: str, jid_: str, request, thumb):
+async def send_invite(client, target, name: str, jid_, request, thumb):
     """
     WhatsApp's invite to join for someone who can't be added: it uses the
     code made for them, so the group's invite link isn't shared

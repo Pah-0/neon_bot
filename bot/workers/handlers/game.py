@@ -528,7 +528,9 @@ async def wwrank_button_handler(event, data: str):
     if cat not in CATEGORY_CONFIG:
         return
     try:
-        await send_ww_rank(event.chat, cat)
+        result = await send_ww_rank(event.chat.jid, cat)
+        if isinstance(result, str):
+            await event.reply(result)
     except Exception:
         await event.reply(f"Failed to load {cat} ranking.")
 
