@@ -549,7 +549,7 @@ gamemodes = {
         "description": "Chaotic and unpredictable. Any role, including wolves, can be a gunner.",
         "min_players": 4,
         "max_players": 16,
-        "chance": 0,
+        "chance": 5,
         "roles": {
             # 4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16
             # wolf team
@@ -558,7 +558,7 @@ gamemodes = {
             "wolf shaman": [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2],
             "werekitten": [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
             # ~~vil~~ shaman team
-            "shaman": [3, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 7],
+            "shaman": [1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 6],
             "oracle": [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
             # neutrals
             "crazed shaman": [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],

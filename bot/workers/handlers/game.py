@@ -459,9 +459,14 @@ async def werewolf_restriction_handler(client, event):
     if game.ended or not game.players:
         return
     player = game.get_player_by_user_id(event.from_user.id)
-    # the dead don't talk; restricted games also silence non-players; at night
-    # only delete dead players' messages
-    if (player and not player.is_alive) or (not player and game.restricted):
+    # at night delete ALL players' messages (alive or dead); during restricted day
+    # delete non-players' messages too
+    if game.night:
+        try:
+            await event.delete()
+        except Exception:
+            pass
+    elif (player and not player.is_alive) or (not player and game.restricted):
         try:
             await event.delete()
         except Exception:
@@ -501,7 +506,8 @@ async def show_wwstats(event):
         label = label_map.get(key, key.capitalize())
         msg += f"{label}: {stats.get(key, 0)}\n"
     if stats.get("games", 0) > 0:
-        win_rate = stats["wins"] / stats["games"] * 100
+        wins = stats.get("wins", 0)
+        win_rate = wins / stats["games"] * 100
         msg += f"Win rate: {win_rate:.1f}%"
     return await event.reply(msg)
 
@@ -509,7 +515,7 @@ async def show_wwstats(event):
 async def send_ww_rank_buttons(event):
     """Send a button message for ranking category selection."""
     await send_buttons(
-        event.chat_jid,
+        event.chat.jid,
         "🏆 *Werewolf Rankings:* select a category:",
         [(f"wwrank:{cat}", cfg["label"]) for cat, cfg in CATEGORY_CONFIG.items()],
     )
@@ -518,11 +524,14 @@ async def send_ww_rank_buttons(event):
 @on_button("wwrank")
 async def wwrank_button_handler(event, data: str):
     """Handle a press on a werewolf rankings button."""
-    _, _, cat = data.partition(":")
+    cat = data
     if cat not in CATEGORY_CONFIG:
         return
     try:
-        await send_ww_rank(event.chat, cat)
+        async with event.react("⏳"):
+            result = await send_ww_rank(event.chat.jid, cat)
+        if result:
+            await event.reply(result)
     except Exception:
         await event.reply(f"Failed to load {cat} ranking.")
 

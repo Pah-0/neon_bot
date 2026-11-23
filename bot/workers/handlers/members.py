@@ -246,41 +246,76 @@ async def gunban(event: Event, args, client):
 
 async def add(event: Event, args, client):
     """
-    [Owner | Sudo | Admin] Add people to this group by phone number. Group
-    only; the bot must be a group admin. If someone's privacy settings stop
-    the bot from adding them, they're sent an invite to join that only they
-    can use (WhatsApp's own, which doesn't show the group's link), or the
-    invite link if WhatsApp gives no invite for them.
-    Banned users (gban) must be unbanned first.
+    [Owner | Sudo | Admin] Add people to this group by phone number, or
+    readd someone who was removed by replying to their message. Group only;
+    the bot must be a group admin. If someone's privacy settings stop the bot
+    from adding them, they're sent an invite to join that only they can use
+    (WhatsApp's own, which doesn't show the group's link), or the invite link
+    if WhatsApp gives no invite for them. Banned users (gban) must be
+    unbanned first.
 
-    Usage: add phone_number ... [-c] (with country code, leading + optional)
+    Usage: add phone_number ... [-c] (or reply to a member's message)
         -c : add them to this group's community instead, which puts them in
             its announcement group (community admins only)
+
+    phone_number: with country code (leading + optional); or the replied
+    message's sender
     """
     community, rest = parse(args)
     group_info, parent = await admin_check(event, client, community)
     if not group_info:
         return
-    numbers = [a.lstrip("+") for a in rest.split()]
-    numbers = [n for n in numbers if n.isdigit()]
-    if not numbers:
+
+    jids = await add_targets(event, rest)
+    if not jids:
         return await event.reply(getdoc(add))
+
     banned = await banned_for(event.chat.jid)
     if community:
         banned |= bot.group_dict.get(parent.User, {}).get("community_gbanned") or set()
+
     notes = []
-    if blocked := [n for n in numbers if n in banned]:
-        notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
-        numbers = [n for n in numbers if n not in blocked]
+    allowed = []
+
+    for j in jids:
+        if j.User in banned:
+            notes.append(f"*{j.User} is banned; gunban them first.*")
+        else:
+            allowed.append(j)
+
+    jids = allowed
     target = parent if community else event.chat.jid
+
     try:
-        if numbers:
+        if jids:
             info = await client.get_group_info(parent) if community else group_info
-            notes += await add_numbers(client, target, info.GroupName.Name, numbers)
+            notes += await add_numbers(client, target, info.GroupName.Name, jids)
+
         await event.reply("\n".join(notes))
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
+
+
+async def add_targets(event, rest: str) -> list:
+    """The JIDs to add: phone numbers in args (a leading + is stripped),
+    or the replied user's LID. get_lid_from_pn returns an empty user when
+    the LID isn't found, so fall back to the phone number in that case."""
+    jids = []
+    for a in rest.split():
+        n = a.lstrip("@").lstrip("+")
+        if not n.isdigit():
+            continue
+        lid = (
+            await bot.client.get_lid_from_pn(jid.build_jid(n, "s.whatsapp.net"))
+        ).User
+        jids.append(jid.build_jid(lid or n, "lid" if lid else "s.whatsapp.net"))
+
+    if not jids and event.reply_to_message:
+        user = event.reply_to_message.from_user
+        if lid := user.id:
+            jids.append(jid.build_jid(lid, "lid"))
+    return jids
 
 
 async def group_thumbnail(client, target) -> bytes | None:
@@ -299,7 +334,7 @@ async def group_thumbnail(client, target) -> bytes | None:
         return None
 
 
-async def send_invite(client, target, name: str, number: str, request, thumb):
+async def send_invite(client, target, name: str, jid_, request, thumb):
     """
     WhatsApp's invite to join for someone who can't be added: it uses the
     code made for them, so the group's invite link isn't shared
@@ -313,30 +348,29 @@ async def send_invite(client, target, name: str, number: str, request, thumb):
     )
     if thumb:
         invite.JPEGThumbnail = thumb
-    await client.send_message(
-        jid.build_jid(number, "s.whatsapp.net"), Message(groupInviteMessage=invite)
-    )
+    await client.send_message(jid_, Message(groupInviteMessage=invite))
 
 
-async def add_numbers(client, target, name: str, numbers: list) -> list:
-    """Adds numbers to a group or community (named name); a note on each"""
+async def add_numbers(client, target, name: str, jids: list) -> list:
+    """Adds users to a group or community (named name); a note on each"""
     result = await client.update_group_participants(
         target,
-        [jid.build_jid(n, "s.whatsapp.net") for n in numbers],
+        jids,
         ParticipantChange.ADD,
     )
-    # Results aren't promised in the order sent; match them by number
-    by_number = {}
+    # Results aren't promised in the order sent; match them by user id
+    by_user = {}
     for participant in result:
         for user in member_ids(participant):
-            by_number[user] = participant
+            by_user[user] = participant
     notes, link, thumb = [], None, False
-    for number in numbers:
-        if not (participant := by_number.get(number)):
-            notes.append(f"*No answer from WhatsApp for {number}.*")
+    for jid_ in jids:
+        user = jid_.User
+        if not (participant := by_user.get(user)):
+            notes.append(f"*No answer from WhatsApp for {user}.*")
             continue
         if not participant.Error:
-            notes.append(f"*Added {number}.*")
+            notes.append(f"*Added {user}.*")
             continue
         why = ADD_ERRORS.get(
             participant.Error, f"couldn't be added (error {participant.Error})"
@@ -344,18 +378,16 @@ async def add_numbers(client, target, name: str, numbers: list) -> list:
         if participant.Error == 403 and participant.AddRequest.Code:
             if thumb is False:
                 thumb = await group_thumbnail(client, target)
-            await send_invite(
-                client, target, name, number, participant.AddRequest, thumb
-            )
+            await send_invite(client, target, name, user, participant.AddRequest, thumb)
             why += "; they were sent an invite to join"
         elif participant.Error == 403:
             link = link or await client.get_group_invite_link(target)
             await client.send_message(
-                jid.build_jid(number, "s.whatsapp.net"),
+                jid_,
                 f"You're invited to join {name}:\n{link}",
             )
             why += "; they were sent the invite link"
-        notes.append(f"*{number} {why}.*")
+        notes.append(f"*{user} {why}.*")
     return notes
 
 
