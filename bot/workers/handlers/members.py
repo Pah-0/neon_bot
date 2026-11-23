@@ -25,6 +25,7 @@ from bot.utils.group_utils import (
 )
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import user_is_admin, user_is_privileged
+from bot.utils.user_utils import ids_from_lid
 
 
 async def kick(event: Event, args, client):
@@ -266,6 +267,21 @@ async def add(event: Event, args, client):
     if not group_info:
         return
     numbers = targets(event, rest)
+    if not numbers:
+        return await event.reply(getdoc(add))
+    # Reply targets come back as LIDs; add_numbers needs phone numbers
+    resolved = []
+    for n in numbers:
+        if n.isdigit():
+            resolved.append(n)
+        else:
+            try:
+                lid, number = await ids_from_lid(n)
+                if number:
+                    resolved.append(number)
+            except Exception:
+                pass
+    numbers = list(dict.fromkeys(resolved))
     if not numbers:
         return await event.reply(getdoc(add))
     banned = await banned_for(event.chat.jid)
