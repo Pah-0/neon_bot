@@ -9,8 +9,8 @@ CATEGORY_CONFIG = {
     "most_lynched": {
         "label": "Most Lynched",
         "sort": "lynched",
-        "unit": "lynch",
-        "unit_plural": "lynches",
+        "unit": "lynched",
+        "unit_plural": "lynched",
         "title": "Werewolf Leaderboard",
         "subtitle": "{period} · Global Stats",
         "totals": "Games Played: {total}",
@@ -18,8 +18,8 @@ CATEGORY_CONFIG = {
     "most_clocked": {
         "label": "Most Clocked Villains",
         "sort": "clocked",
-        "unit": "villain",
-        "unit_plural": "villains",
+        "unit": "clocked villain",
+        "unit_plural": "clocked villains",
         "title": "Werewolf Leaderboard",
         "subtitle": "{period} · Global Stats",
         "totals": "Games Played: {total}",
@@ -27,8 +27,8 @@ CATEGORY_CONFIG = {
     "most_wrong_lynched": {
         "label": "Most Wrongly Lynched",
         "sort": "wrong_lynched",
-        "unit": "wrong lynch",
-        "unit_plural": "wrong lynches",
+        "unit": "wrongly lynched",
+        "unit_plural": "wrongly lynched",
         "title": "Werewolf Leaderboard",
         "subtitle": "{period} · Global Stats",
         "totals": "Games Played: {total}",
@@ -129,7 +129,7 @@ async def send_ww_rank(chat, category: str, final: bool = False) -> str:
     total = len(bot.werewolf_stats)
     members = len(rows)
 
-    subtitle = cfg["subtitle"].format(period="Global", total=total)
+    subtitle = cfg["subtitle"].format(period=cfg["label"], total=total)
     totals_text = (
         cfg["totals"].format(total=total, members=members)
         if "{members}" in cfg["totals"]
@@ -145,9 +145,10 @@ async def send_ww_rank(chat, category: str, final: bool = False) -> str:
         "unit_plural": cfg["unit_plural"],
     }
 
-    card_bytes = await ranking_card(data)
+    caption = f"*{cfg['label']}* · Global Stats"
     try:
-        await bot.client.send_image(chat, card_bytes, "", mentions_are_lids=False)
-        return "Leaderboard sent."
+        await bot.client.send_image(
+            chat, await ranking_card(data), caption, mentions_are_lids=False
+        )
     except Exception as e:
         return f"Failed to send leaderboard: {e}"

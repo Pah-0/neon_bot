@@ -31,7 +31,7 @@ ROW_H, ROW_GAP = 94, 10
 # Rows drawn on the card; a longer -f ranking says how many more there are
 MAX_ROWS = 30
 BACKGROUND = (24, 26, 36)
-ACCENT = (118, 96, 220)
+ACCENT = (196, 78, 78)
 # The card sent when a ranking resets: the period's final standings
 FINAL_ACCENT = (196, 146, 40)
 PLACE_COLOURS = {1: (214, 170, 60), 2: (168, 176, 190), 3: (196, 124, 72)}
