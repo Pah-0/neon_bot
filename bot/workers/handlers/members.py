@@ -295,7 +295,9 @@ async def add_targets(event, rest: str) -> list:
         n = a.lstrip("@").lstrip("+")
         if not n.isdigit():
             continue
-        lid = (await bot.client.get_lid_from_pn(jid.build_jid(n, "s.whatsapp.net"))).User
+        lid = (
+            await bot.client.get_lid_from_pn(jid.build_jid(n, "s.whatsapp.net"))
+        ).User
         jids.append(jid.build_jid(lid or n, "lid" if lid else "s.whatsapp.net"))
     if not jids and event.reply_to_message:
         user = event.reply_to_message.from_user
