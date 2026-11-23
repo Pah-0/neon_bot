@@ -265,21 +265,32 @@ async def add(event: Event, args, client):
     group_info, parent = await admin_check(event, client, community)
     if not group_info:
         return
+
     jids = await add_targets(event, rest)
     if not jids:
         return await event.reply(getdoc(add))
+
     banned = await banned_for(event.chat.jid)
     if community:
         banned |= bot.group_dict.get(parent.User, {}).get("community_gbanned") or set()
+
     notes = []
-    if blocked := [jid_.split("@")[0] for jid_ in jids if jid_.split("@")[0] in banned]:
-        notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
-        jids = [jid_ for jid_ in jids if jid_.split("@")[0] not in blocked]
+    allowed = []
+
+    for j in jids:
+        if j.User in banned:
+            notes.append(f"*{j.User} is banned; gunban them first.*")
+        else:
+            allowed.append(j)
+
+    jids = allowed
     target = parent if community else event.chat.jid
+
     try:
         if jids:
             info = await client.get_group_info(parent) if community else group_info
             notes += await add_numbers(client, target, info.GroupName.Name, jids)
+
         await event.reply("\n".join(notes))
     except Exception as e:
         await logger(Exception)
@@ -287,9 +298,9 @@ async def add(event: Event, args, client):
 
 
 async def add_targets(event, rest: str) -> list:
-    """The LID JIDs to add: phone numbers in args (a leading + is stripped),
-    or the replied user's LID. get_lid_from_pn returns an empty user when the
-    LID isn't found, so fall back to the phone number in that case."""
+    """The JIDs to add: phone numbers in args (a leading + is stripped),
+    or the replied user's LID. get_lid_from_pn returns an empty user when
+    the LID isn't found, so fall back to the phone number in that case."""
     jids = []
     for a in rest.split():
         n = a.lstrip("@").lstrip("+")
@@ -299,12 +310,12 @@ async def add_targets(event, rest: str) -> list:
             await bot.client.get_lid_from_pn(jid.build_jid(n, "s.whatsapp.net"))
         ).User
         jids.append(jid.build_jid(lid or n, "lid" if lid else "s.whatsapp.net"))
+
     if not jids and event.reply_to_message:
         user = event.reply_to_message.from_user
         if lid := user.id:
             jids.append(jid.build_jid(lid, "lid"))
     return jids
-
 
 async def group_thumbnail(client, target) -> bytes | None:
     """The group's picture as a small JPEG, or None if it has none"""
