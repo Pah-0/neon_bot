@@ -459,9 +459,14 @@ async def werewolf_restriction_handler(client, event):
     if game.ended or not game.players:
         return
     player = game.get_player_by_user_id(event.from_user.id)
-    # the dead don't talk; restricted games also silence non-players; at night
-    # only delete dead players' messages
-    if (player and not player.is_alive) or (not player and game.restricted):
+    # at night delete ALL players' messages (alive or dead); during restricted day
+    # delete non-players' messages too
+    if game.night:
+        try:
+            await event.delete()
+        except Exception:
+            pass
+    elif (player and not player.is_alive) or (not player and game.restricted):
         try:
             await event.delete()
         except Exception:
@@ -501,7 +506,8 @@ async def show_wwstats(event):
         label = label_map.get(key, key.capitalize())
         msg += f"{label}: {stats.get(key, 0)}\n"
     if stats.get("games", 0) > 0:
-        win_rate = stats["wins"] / stats["games"] * 100
+        wins = stats.get("wins", 0)
+        win_rate = wins / stats["games"] * 100
         msg += f"Win rate: {win_rate:.1f}%"
     return await event.reply(msg)
 
