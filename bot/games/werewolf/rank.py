@@ -84,11 +84,14 @@ CATEGORY_CONFIG = {
 async def _build_rows(category: str, limit: int = 10) -> list[dict]:
     """Build ranking rows for a given category from bot.werewolf_stats."""
     sort_key = CATEGORY_CONFIG[category]["sort"]
-    entries = sorted(
-        bot.werewolf_stats.items(),
-        key=lambda kv: kv[1].get(sort_key, 0),
-        reverse=True,
-    )[:limit]
+    entries = [
+        (user_id, stats)
+        for user_id, stats in bot.werewolf_stats.items()
+        if stats.get(sort_key, 0) > 0
+    ]
+    entries = sorted(entries, key=lambda kv: kv[1].get(sort_key, 0), reverse=True)[
+        :limit
+    ]
 
     rows = []
     for i, (user_id, stats) in enumerate(entries, start=1):
@@ -105,14 +108,13 @@ async def _build_rows(category: str, limit: int = 10) -> list[dict]:
             if info
             else "Unknown"
         )
-        count = stats.get(sort_key, 0)
         rows.append(
             {
                 "user": user_id,
                 "jid": wa_jid.build_jid(user_id, "lid"),
                 "place": i,
                 "name": name,
-                "count": count,
+                "count": stats.get(sort_key, 0),
                 "medals": {},
             }
         )
