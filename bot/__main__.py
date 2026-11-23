@@ -609,8 +609,8 @@ async def delete_werewolf_media(client: NewAClient, event: Event):
     if sender not in game.player_ids:
         return
 
-    # Check if media
-    if not event.media:
+    # Check if media (image, ptt, or video)
+    if not (event.image or event.ptv or event.video):
         return
 
     # Delete the message

@@ -459,7 +459,8 @@ async def werewolf_restriction_handler(client, event):
     if game.ended or not game.players:
         return
     player = game.get_player_by_user_id(event.from_user.id)
-    # the dead don't talk; restricted games also silence non-players
+    # the dead don't talk; restricted games also silence non-players; at night
+    # only delete dead players' messages
     if (player and not player.is_alive) or (not player and game.restricted):
         try:
             await event.delete()

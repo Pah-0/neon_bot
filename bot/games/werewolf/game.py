@@ -230,10 +230,13 @@ class Game:
         self.start_time = datetime.now()
         self.last_seen = dict.fromkeys(self.players, self.start_time)
 
-    async def send_lobby(self, message, mentions=False):
-        """Sends message to the group; mentions makes its @<user_id>s tags."""
+    async def send_lobby(self, message, ghost_mentions=None, mentions_are_lids=False):
+        """Sends message to the group; ghost_mentions silently tags users via LID."""
         await bot.client.send_message(
-            self.chat_jid, message, mentions_are_lids=mentions
+            self.chat_jid,
+            message,
+            ghost_mentions=ghost_mentions,
+            mentions_are_lids=mentions_are_lids,
         )
 
     @property
