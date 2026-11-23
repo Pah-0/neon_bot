@@ -1,6 +1,6 @@
 """Werewolf leaderboards drawn as cards, from the global player stats."""
 
-from bot import bot
+from bot import bot, jid as wa_jid
 from bot.utils.msg_utils import get_user_info
 from bot.utils.rank_card import ranking_card
 
@@ -108,6 +108,7 @@ async def _build_rows(category: str, limit: int = 10) -> list[dict]:
         rows.append(
             {
                 "user": user_id,
+                "jid": wa_jid.build_jid(user_id, "s.whatsapp.net"),
                 "place": i,
                 "name": name,
                 "count": count,
