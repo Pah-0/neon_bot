@@ -231,6 +231,11 @@ async def _(client: NewAClient, message: Event):
     await event_handler(message, werewolf_handler, client)
 
 
+@bot.register("ww")
+async def _(client: NewAClient, message: Event):
+    await event_handler(message, werewolf_handler, client)
+
+
 @bot.register("lynch")
 async def _(client: NewAClient, message: Event):
     await event_handler(message, werewolf_handler, client)
