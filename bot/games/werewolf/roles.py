@@ -549,7 +549,7 @@ gamemodes = {
         "description": "Chaotic and unpredictable. Any role, including wolves, can be a gunner.",
         "min_players": 4,
         "max_players": 16,
-        "chance": 0,
+        "chance": 5,
         "roles": {
             # 4, 5, 6, 7, 8, 9, 10,11,12,13,14,15,16
             # wolf team
