@@ -268,19 +268,13 @@ async def add(event: Event, args, client):
     numbers = targets(event, rest)
     if not numbers:
         return await event.reply(getdoc(add))
-    # Resolve +number to LID; reply targets come back as LIDs from targets(),
-    # and other args are used as-is
+    # targets() returns bare digits for arg targets (a leading + is stripped)
+    # and the replied user's LID; resolve digits to LIDs so every id is a LID JID
     resolved = []
     for n in numbers:
-        if n.startswith("+"):
+        if n.isdigit():
             try:
-                resolved.append(
-                    (
-                        await bot.client.get_lid_from_pn(
-                            jid.build_jid(n.lstrip("+"), "s.whatsapp.net")
-                        )
-                    ).User
-                )
+                resolved.append((await bot.client.get_lid_from_pn(jid.build_jid(n, "s.whatsapp.net"))).User)
             except Exception:
                 continue
         else:
