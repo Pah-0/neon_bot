@@ -365,7 +365,7 @@ async def add_numbers(client, target, name: str, jids: list) -> list:
             by_user[user] = participant
     notes, link, thumb = [], None, False
     for jid_ in jids:
-        user = jid_.split("@")[0]
+        user = jid_.User
         if not (participant := by_user.get(user)):
             notes.append(f"*No answer from WhatsApp for {user}.*")
             continue
