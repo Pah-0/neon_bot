@@ -317,6 +317,7 @@ async def add_targets(event, rest: str) -> list:
             jids.append(jid.build_jid(lid, "lid"))
     return jids
 
+
 async def group_thumbnail(client, target) -> bytes | None:
     """The group's picture as a small JPEG, or None if it has none"""
     try:
