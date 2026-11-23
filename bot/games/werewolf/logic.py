@@ -332,7 +332,12 @@ async def night_phase(game, is_night_zero=False):
         game.night_num += 1
     game.night_start_time = datetime.now()
     game.protected = set()
-    await game.send_lobby("It is now *nighttime*.")
+    ghost = " ".join(f"@{p.user_id}" for p in game.players_alive_list)
+    await game.send_lobby(
+        "It is now *nighttime*. Please be quiet during the night.",
+        ghost_mentions=ghost,
+        mentions_are_lids=True,
+    )
     await game.update_status()
     for p in game.players.values():
         p.target = ""
@@ -1096,9 +1101,12 @@ async def day_phase(game):
                 "You are staying home due to your illness and cannot vote or use any powers.",
             )
     if game.discussion:
+        ghost = " ".join(f"@{p.user_id}" for p in game.players_alive_list)
         await game.send_lobby(
-            "It is now *daytime*. Discuss who to lynch: voting opens in "
-            f"*{_duration(game.discussion)}*."
+            f"It is now *daytime*. Discuss who to lynch: voting opens in "
+            f"*{_duration(game.discussion)}*.",
+            ghost_mentions=ghost,
+            mentions_are_lids=True,
         )
     await game.update_status()
     # detectives pick who to identify in their PM, so the group can't see it
@@ -1119,12 +1127,15 @@ async def day_phase(game):
             await asyncio.sleep(1)
         game.voting_open = True
         game.day_start_time = datetime.now()
+        ghost = " ".join(f"@{p.user_id}" for p in game.players_alive_list)
         await game.send_lobby(
             f"{'Voting is open!' if game.discussion else 'It is now *daytime*.'} "
             f"Use `{conf.CMD_PREFIX}lynch <player>` to vote to lynch"
             " (a #number, name, @mention, or reply to their message)."
             f" *{game.votes_to_lynch}* votes lynch at once; `{conf.CMD_PREFIX}votes` shows them."
-            f" *{_duration(game.day_timeout)}* to vote."
+            f" *{_duration(game.day_timeout)}* to vote.",
+            ghost_mentions=ghost,
+            mentions_are_lids=True,
         )
         while (
             elapsed := (datetime.now() - game.day_start_time).total_seconds()
