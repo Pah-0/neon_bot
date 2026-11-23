@@ -93,7 +93,7 @@ async def _build_rows(category: str, limit: int = 10) -> list[dict]:
     rows = []
     for i, (user_id, stats) in enumerate(entries, start=1):
         try:
-            info = await get_user_info(user_id)
+            info = await get_user_info(user_id, "lid")
         except Exception:
             info = None
         name = (
@@ -109,7 +109,7 @@ async def _build_rows(category: str, limit: int = 10) -> list[dict]:
         rows.append(
             {
                 "user": user_id,
-                "jid": wa_jid.build_jid(user_id, "s.whatsapp.net"),
+                "jid": wa_jid.build_jid(user_id, "lid"),
                 "place": i,
                 "name": name,
                 "count": count,
