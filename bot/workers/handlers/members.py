@@ -274,7 +274,13 @@ async def add(event: Event, args, client):
     for n in numbers:
         if n.startswith("+"):
             try:
-                resolved.append((await bot.client.get_lid_from_pn(jid.build_jid(n.lstrip("+"), "s.whatsapp.net"))).User)
+                resolved.append(
+                    (
+                        await bot.client.get_lid_from_pn(
+                            jid.build_jid(n.lstrip("+"), "s.whatsapp.net")
+                        )
+                    ).User
+                )
             except Exception:
                 continue
         else:
