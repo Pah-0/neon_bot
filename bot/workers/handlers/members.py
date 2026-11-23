@@ -246,23 +246,26 @@ async def gunban(event: Event, args, client):
 
 async def add(event: Event, args, client):
     """
-    [Owner | Sudo | Admin] Add people to this group by phone number. Group
-    only; the bot must be a group admin. If someone's privacy settings stop
-    the bot from adding them, they're sent an invite to join that only they
-    can use (WhatsApp's own, which doesn't show the group's link), or the
-    invite link if WhatsApp gives no invite for them.
-    Banned users (gban) must be unbanned first.
+    [Owner | Sudo | Admin] Add people to this group by phone number, or
+    readd someone who was removed by replying to their message. Group only;
+    the bot must be a group admin. If someone's privacy settings stop the bot
+    from adding them, they're sent an invite to join that only they can use
+    (WhatsApp's own, which doesn't show the group's link), or the invite link
+    if WhatsApp gives no invite for them. Banned users (gban) must be
+    unbanned first.
 
-    Usage: add phone_number ... [-c] (with country code, leading + optional)
+    Usage: add phone_number ... [-c] (or reply to a member's message)
         -c : add them to this group's community instead, which puts them in
             its announcement group (community admins only)
+
+    phone_number: with country code (leading + optional); or the replied
+    message's sender
     """
     community, rest = parse(args)
     group_info, parent = await admin_check(event, client, community)
     if not group_info:
         return
-    numbers = [a.lstrip("+") for a in rest.split()]
-    numbers = [n for n in numbers if n.isdigit()]
+    numbers = targets(event, rest)
     if not numbers:
         return await event.reply(getdoc(add))
     banned = await banned_for(event.chat.jid)
