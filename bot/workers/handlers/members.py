@@ -265,37 +265,16 @@ async def add(event: Event, args, client):
     group_info, parent = await admin_check(event, client, community)
     if not group_info:
         return
-    numbers = targets(event, rest)
-    if not numbers:
-        return await event.reply(getdoc(add))
-    # targets() returns bare digits for arg targets (a leading + is stripped)
-    # and the replied user's LID; resolve digits to LIDs so every id is a LID
-    # JID
-    resolved = []
-    for n in numbers:
-        if n.isdigit():
-            try:
-                resolved.append(
-                    (
-                        await bot.client.get_lid_from_pn(
-                            jid.build_jid(n, "s.whatsapp.net")
-                        )
-                    ).User
-                )
-            except Exception:
-                continue
-        else:
-            resolved.append(n)
-    jids = [jid.build_jid(n, "lid") for n in resolved]
+    jids = await add_targets(event, rest)
     if not jids:
         return await event.reply(getdoc(add))
     banned = await banned_for(event.chat.jid)
     if community:
         banned |= bot.group_dict.get(parent.User, {}).get("community_gbanned") or set()
     notes = []
-    if blocked := [n for n in resolved if n in banned]:
+    if blocked := [jid_.split("@")[0] for jid_ in jids if jid_.split("@")[0] in banned]:
         notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
-        jids = [jid.build_jid(n, "lid") for n in resolved if n not in blocked]
+        jids = [jid_ for jid_ in jids if jid_.split("@")[0] not in blocked]
     target = parent if community else event.chat.jid
     try:
         if jids:
@@ -305,6 +284,24 @@ async def add(event: Event, args, client):
     except Exception as e:
         await logger(Exception)
         await event.reply(f"*Error:*\n{e}")
+
+
+async def add_targets(event, rest: str) -> list:
+    """The LID JIDs to add: phone numbers in args (a leading + is stripped),
+    or the replied user's LID. get_lid_from_pn returns an empty user when the
+    LID isn't found, so fall back to the phone number in that case."""
+    jids = []
+    for a in rest.split():
+        n = a.lstrip("@").lstrip("+")
+        if not n.isdigit():
+            continue
+        lid = (await bot.client.get_lid_from_pn(jid.build_jid(n, "s.whatsapp.net"))).User
+        jids.append(jid.build_jid(lid or n, "lid" if lid else "s.whatsapp.net"))
+    if not jids and event.reply_to_message:
+        user = event.reply_to_message.from_user
+        if lid := user.id:
+            jids.append(jid.build_jid(lid, "lid"))
+    return jids
 
 
 async def group_thumbnail(client, target) -> bytes | None:
