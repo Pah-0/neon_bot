@@ -25,7 +25,6 @@ from bot.utils.group_utils import (
 )
 from bot.utils.log_utils import logger
 from bot.utils.msg_utils import user_is_admin, user_is_privileged
-from bot.utils.user_utils import ids_from_lid
 
 
 async def kick(event: Event, args, client):
@@ -271,7 +270,10 @@ async def add(event: Event, args, client):
         return await event.reply(getdoc(add))
     # Reply targets are LIDs; arg targets may be phone numbers. LID is always
     # available, the phone number is not, so build the right JID server per id.
-    jids = [jid.build_jid(n, "lid" if not n.isdigit() else "s.whatsapp.net") for n in numbers]
+    jids = [
+        jid.build_jid(n, "lid" if not n.isdigit() else "s.whatsapp.net")
+        for n in numbers
+    ]
     banned = await banned_for(event.chat.jid)
     if community:
         banned |= bot.group_dict.get(parent.User, {}).get("community_gbanned") or set()
@@ -279,7 +281,10 @@ async def add(event: Event, args, client):
     if blocked := [n for n in numbers if n in banned]:
         notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
         numbers = [n for n in numbers if n not in blocked]
-        jids = [jid.build_jid(n, "lid" if not n.isdigit() else "s.whatsapp.net") for n in numbers]
+        jids = [
+            jid.build_jid(n, "lid" if not n.isdigit() else "s.whatsapp.net")
+            for n in numbers
+        ]
     target = parent if community else event.chat.jid
     try:
         if jids:
@@ -321,9 +326,7 @@ async def send_invite(client, target, name: str, jid_: str, request, thumb):
     )
     if thumb:
         invite.JPEGThumbnail = thumb
-    await client.send_message(
-        jid_, Message(groupInviteMessage=invite)
-    )
+    await client.send_message(jid_, Message(groupInviteMessage=invite))
 
 
 async def add_numbers(client, target, name: str, jids: list) -> list:
@@ -353,9 +356,7 @@ async def add_numbers(client, target, name: str, jids: list) -> list:
         if participant.Error == 403 and participant.AddRequest.Code:
             if thumb is False:
                 thumb = await group_thumbnail(client, target)
-            await send_invite(
-                client, target, name, user, participant.AddRequest, thumb
-            )
+            await send_invite(client, target, name, user, participant.AddRequest, thumb)
             why += "; they were sent an invite to join"
         elif participant.Error == 403:
             link = link or await client.get_group_invite_link(target)
