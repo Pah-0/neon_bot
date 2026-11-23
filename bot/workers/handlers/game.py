@@ -524,7 +524,7 @@ async def send_ww_rank_buttons(event):
 @on_button("wwrank")
 async def wwrank_button_handler(event, data: str):
     """Handle a press on a werewolf rankings button."""
-    _, _, cat = data.partition(":")
+    cat = data
     if cat not in CATEGORY_CONFIG:
         return
     try:
