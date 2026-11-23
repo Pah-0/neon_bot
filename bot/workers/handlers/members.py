@@ -268,23 +268,27 @@ async def add(event: Event, args, client):
     numbers = targets(event, rest)
     if not numbers:
         return await event.reply(getdoc(add))
-    # Reply targets are LIDs; arg targets may be phone numbers. LID is always
-    # available, the phone number is not, so build the right JID server per id.
-    jids = [
-        jid.build_jid(n, "lid" if not n.isdigit() else "s.whatsapp.net")
-        for n in numbers
-    ]
+    # Resolve +number to LID; reply targets come back as LIDs from targets(),
+    # and other args are used as-is
+    resolved = []
+    for n in numbers:
+        if n.startswith("+"):
+            try:
+                resolved.append((await bot.client.get_lid_from_pn(jid.build_jid(n.lstrip("+"), "s.whatsapp.net"))).User)
+            except Exception:
+                continue
+        else:
+            resolved.append(n)
+    jids = [jid.build_jid(n, "lid") for n in resolved]
+    if not jids:
+        return await event.reply(getdoc(add))
     banned = await banned_for(event.chat.jid)
     if community:
         banned |= bot.group_dict.get(parent.User, {}).get("community_gbanned") or set()
     notes = []
-    if blocked := [n for n in numbers if n in banned]:
+    if blocked := [n for n in resolved if n in banned]:
         notes += [f"*{n} is banned; gunban them first.*" for n in blocked]
-        numbers = [n for n in numbers if n not in blocked]
-        jids = [
-            jid.build_jid(n, "lid" if not n.isdigit() else "s.whatsapp.net")
-            for n in numbers
-        ]
+        jids = [jid.build_jid(n, "lid") for n in resolved if n not in blocked]
     target = parent if community else event.chat.jid
     try:
         if jids:
