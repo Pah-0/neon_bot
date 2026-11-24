@@ -1220,9 +1220,7 @@ async def audio_sticker(event, args, client):
                 )
             media = replied.audio or replied.video or replied.document
             if not media:
-                return await event.reply(
-                    "*Replied message is not an audio or video.*"
-                )
+                return await event.reply("*Replied message is not an audio or video.*")
             async with event.react("📥"):
                 file_bytes = await replied.download()
             audio_sticker_sessions[chat_id] = {
@@ -1245,9 +1243,7 @@ async def audio_sticker(event, args, client):
                 )
             media = replied.video or replied.audio
             if not media:
-                return await event.reply(
-                    "*Replied message is not a video or audio.*"
-                )
+                return await event.reply("*Replied message is not a video or audio.*")
             async with event.react("📥"):
                 file_bytes = await replied.download()
             bot.client.me = me = await bot.client.get_me()
@@ -1270,12 +1266,7 @@ async def audio_sticker(event, args, client):
             return await event.reply(
                 "Reply to an image/video/sticker to use as the sticker target."
             )
-        media = (
-            replied.sticker
-            or replied.image
-            or replied.video
-            or replied.document
-        )
+        media = replied.sticker or replied.image or replied.video or replied.document
         if not media:
             return await event.reply(
                 "*Replied message is not an image, video, gif, sticker, or media document.*"
