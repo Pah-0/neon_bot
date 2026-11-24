@@ -841,11 +841,7 @@ async def on_message(client: NewAClient, message: MessageEv):
                 except StopAutoHandlers:
                     return
         if event.type == "text" and event.text:
-            command, _ = (
-                event.text.split(maxsplit=1)
-                if len(event.text.split()) > 1
-                else (event.text, None)
-            )
+            command = event.text.split(maxsplit=1)[0] if event.text.strip() else ""
             func = function_dict.get(command)
             if func:
                 await func(client, event)
@@ -958,6 +954,9 @@ async def dd_media(item, media_type):
     )
 
 
+HELP_FLAGS = frozenset(("--help", "-h"))
+
+
 async def event_handler(
     event: Event,
     function,
@@ -965,25 +964,30 @@ async def event_handler(
     require_args: bool = False,
     disable_help: bool = False,
     split_args: str = " ",
-    default_args: str = False,
-    use_default_args: str | None | bool = False,
-    replace_args=None,
+    default_args: str | bool | None = False,  # False = not chained; str/None = remainder from previous handler
+    use_default_args: bool = False,
+    replace_args: str | None = None,
 ):
-    args = (
-        event.text.split(split_args, maxsplit=1)[1].strip()
-        if len(event.text.split()) > 1
-        else ""
-    )
-    args = default_args if use_default_args and default_args is not False else args
-    help_tuple = ("--help", "-h")
-    if (
+    sep = None if split_args == " " else split_args
+    parts = (event.text or "").split(sep, maxsplit=1)
+    args = parts[1].strip() if len(parts) > 1 else ""
+
+    # Chained call: default_args holds what the previous handler left over.
+    chained = default_args is not False
+    remainder = (default_args or "").strip() if chained else ""
+
+    if use_default_args and chained:
+        args = remainder
+
+    show_help = (
         (require_args and not args)
-        or (args and args.casefold() in help_tuple)
-        or (require_args and not (default_args or default_args is False))
-        or (default_args in help_tuple)
-    ):
+        or (require_args and chained and not remainder)  # chained, nothing left
+        or args.casefold() in HELP_FLAGS
+        or remainder.casefold() in HELP_FLAGS            # remainder is just -h
+    )
+    if show_help:
         if disable_help:
             return
-        return await event.reply(f"{inspect.getdoc(function)}")
-    args = replace_args or args or ""  # prevent sending None
-    await function(event, args, client)
+        return await event.reply(inspect.getdoc(function) or "No help available.")
+
+    await function(event, replace_args or args, client)

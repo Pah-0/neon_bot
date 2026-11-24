@@ -1198,7 +1198,7 @@ async def audio_sticker(event: Event, args: str, client):
         -c/--cancel: cancel an active session
         -q: quality (1-100), default 75
         -cl: compression level (1-6), default 4
-        -c: crop
+        -cr: crop
         -f: force animated gif mode
         -nl: skip the not-broken check
     """
@@ -1215,14 +1215,14 @@ async def audio_sticker(event: Event, args: str, client):
         "-q",
         "-cl",
         ["-nl", "store_false"],
-        ["-c", "store_true"],
+        ["-cr", "store_true"],
         ["-f", "store_true"],
         ["-a", "--audio", "store_true"],
         ["-c", "--cancel", "store_true"],
         to_parse=args or "",
         get_unknown=True,
     )
-    crop = arg.c
+    crop = arg.cr
     forced = arg.f
     limit = arg.nl
     if q := arg.q:
