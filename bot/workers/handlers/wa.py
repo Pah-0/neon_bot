@@ -1180,7 +1180,7 @@ async def stickerize_album(event: Event, args: str, client):
         await event.react("❌")
 
 
-async def audio_sticker(event, args, client):
+async def audio_sticker(event: Event, args: str, client):
     """
     Create an audio sticker from an image + audio pair.
 
@@ -1193,8 +1193,14 @@ async def audio_sticker(event, args, client):
         the session's audio with the replied media as the sticker target.
 
     Arguments:
+        name: sticker (or pack) name [Optional]; random if not given
         -a/--audio: start an audio-sticker session (reply to audio or video)
         -c/--cancel: cancel an active session
+        -q: quality (1-100), default 75
+        -cl: compression level (1-6), default 4
+        -c: crop
+        -f: force animated gif mode
+        -nl: skip the not-broken check
     """
     user = event.from_user.id
     if not user_is_privileged(user):
@@ -1203,12 +1209,32 @@ async def audio_sticker(event, args, client):
         if not user_is_allowed(user):
             return await event.react("⛔")
     chat_id = event.chat.id
+    quality = 75
+    compression_level = 4
     arg, args = get_args(
+        "-q",
+        "-cl",
+        ["-nl", "store_false"],
+        ["-c", "store_true"],
+        ["-f", "store_true"],
         ["-a", "--audio", "store_true"],
         ["-c", "--cancel", "store_true"],
         to_parse=args or "",
         get_unknown=True,
     )
+    crop = arg.c
+    forced = arg.f
+    limit = arg.nl
+    if q := arg.q:
+        if not q.isdigit():
+            await event.reply(f"-q: argument requires a digit not {q}")
+        else:
+            quality = int(q)
+    if cl := arg.cl:
+        if not cl.isdigit():
+            await event.reply(f"-cl: argument requires a digit not {cl}")
+        else:
+            compression_level = int(cl)
     if arg.cancel:
         audio_sticker_sessions.pop(chat_id, None)
         return await event.reply("*Audio sticker session cancelled.*")
@@ -1219,12 +1245,10 @@ async def audio_sticker(event, args, client):
                     "Reply to an audio or video to start an audio-sticker session."
                 )
             media = replied.audio or replied.video or replied.document
-            if not media:
+            if not (media and media.mimetype.startswith(("audio", "video"))):
                 return await event.reply("*Replied message is not an audio or video.*")
-            async with event.react("📥"):
-                file_bytes = await replied.download()
             audio_sticker_sessions[chat_id] = {
-                "audio_bytes": file_bytes,
+                "audio_msg": replied,
                 "time": time.time(),
             }
             return await event.reply(
@@ -1241,9 +1265,9 @@ async def audio_sticker(event, args, client):
                     "Reply to a video with audio, or use `--audio` to begin a session.\n"
                     "For help send .asticker -h"
                 )
-            media = replied.video or replied.audio
-            if not media:
-                return await event.reply("*Replied message is not a video or audio.*")
+            media = replied.video or replied.document
+            if not (media and media.mimetype.startswith("video")):
+                return await event.reply("*Replied message is not a video.*")
             async with event.react("📥"):
                 file_bytes = await replied.download()
             bot.client.me = me = await bot.client.get_me()
@@ -1254,6 +1278,11 @@ async def audio_sticker(event, args, client):
                     quote=True,
                     name=(args or random.choice((enquip(), enquip4()))),
                     packname=me.PushName,
+                    crop=crop,
+                    enforce_not_broken=limit,
+                    animated_gif=forced,
+                    quality=quality,
+                    compression_level=compression_level,
                 )
 
         # Session path: combine stored audio with replied sticker target
@@ -1267,10 +1296,13 @@ async def audio_sticker(event, args, client):
                 "Reply to an image/video/sticker to use as the sticker target."
             )
         media = replied.sticker or replied.image or replied.video or replied.document
-        if not media:
+        if not (media and media.mimetype.startswith(("audio", "image", "video"))):
             return await event.reply(
                 "*Replied message is not an image, video, gif, sticker, or media document.*"
             )
+
+        async with event.react("📥"):
+            audio_bytes = await session["audio_msg"].download()
         async with event.react("📥"):
             file_bytes = await replied.download()
         bot.client.me = me = await bot.client.get_me()
@@ -1278,10 +1310,15 @@ async def audio_sticker(event, args, client):
         async with event.react("👩‍🏭"):
             return await event.reply_audio_sticker(
                 file_bytes,
-                session["audio_bytes"],
+                audio_bytes,
                 quote=True,
                 name=(args or random.choice((enquip(), enquip4()))),
                 packname=me.PushName,
+                crop=crop,
+                enforce_not_broken=limit,
+                animated_gif=forced,
+                quality=quality,
+                compression_level=compression_level,
             )
     except Exception:
         await logger(Exception)
