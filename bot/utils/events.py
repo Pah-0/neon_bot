@@ -964,7 +964,8 @@ async def event_handler(
     require_args: bool = False,
     disable_help: bool = False,
     split_args: str = " ",
-    default_args: str | bool | None = False,  # False = not chained; str/None = remainder from previous handler
+    # False = not chained; str/None = remainder from previous handler
+    default_args: str | bool | None = False,
     use_default_args: bool = False,
     replace_args: str | None = None,
 ):
@@ -983,7 +984,7 @@ async def event_handler(
         (require_args and not args)
         or (require_args and chained and not remainder)  # chained, nothing left
         or args.casefold() in HELP_FLAGS
-        or remainder.casefold() in HELP_FLAGS            # remainder is just -h
+        or remainder.casefold() in HELP_FLAGS  # remainder is just -h
     )
     if show_help:
         if disable_help:
