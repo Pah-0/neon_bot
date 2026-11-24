@@ -131,6 +131,7 @@ upscale_cache = LimitedDict()
 # Requests for the same media wait for each other, see KeyedLock
 cache_locks = KeyedLock()
 purge_sessions = {}
+audio_sticker_sessions = {}
 
 
 async def tools(event, args, client):
@@ -200,6 +201,7 @@ async def tools(event, args, client):
             f"*Stickers:*{s}"
             f"{pre}kang - *Kang a replied sticker*{s}"
             f"{pre}sticker ({pre}s) - *Turn images/videos/gifs/albums into stickers*{s}"
+            f"{pre}asticker - *Create an audio sticker from an image + audio pair*{s}"
             f"{pre}stick2img ({pre}img) - *Turn a sticker into an image/gif*{s}"
             f"{s}"
             f"{pre}undel - *Resend recently deleted messages*{s}"
@@ -1172,6 +1174,123 @@ async def stickerize_album(event: Event, args: str, client):
                 animated_gif=forced,
                 quality=quality,
                 compression_level=compression_level,
+            )
+    except Exception:
+        await logger(Exception)
+        await event.react("❌")
+
+
+async def audio_sticker(event, args, client):
+    """
+    Create an audio sticker from an image + audio pair.
+
+    Easy path: reply to a video with audio to turn it directly into an audio sticker.
+
+    Session path:
+        -a/--audio  (reply to an audio or video)  start a session storing the audio
+        -c/--cancel                                  cancel the session
+        Then reply to an image/video/sticker with `.asticker` to combine
+        the session's audio with the replied media as the sticker target.
+
+    Arguments:
+        -a/--audio: start an audio-sticker session (reply to audio or video)
+        -c/--cancel: cancel an active session
+    """
+    user = event.from_user.id
+    if not user_is_privileged(user):
+        if not chat_is_allowed(event):
+            return
+        if not user_is_allowed(user):
+            return await event.react("⛔")
+    chat_id = event.chat.id
+    arg, args = get_args(
+        ["-a", "--audio", "store_true"],
+        ["-c", "--cancel", "store_true"],
+        to_parse=args or "",
+        get_unknown=True,
+    )
+    if arg.cancel:
+        audio_sticker_sessions.pop(chat_id, None)
+        return await event.reply("*Audio sticker session cancelled.*")
+    try:
+        if arg.audio:
+            if not (replied := event.reply_to_message):
+                return await event.reply(
+                    "Reply to an audio or video to start an audio-sticker session."
+                )
+            media = replied.audio or replied.video or replied.document
+            if not media:
+                return await event.reply(
+                    "*Replied message is not an audio or video.*"
+                )
+            async with event.react("📥"):
+                file_bytes = await replied.download()
+            audio_sticker_sessions[chat_id] = {
+                "audio_bytes": file_bytes,
+                "time": time.time(),
+            }
+            return await event.reply(
+                f"Audio sticker session started (audio stored).\n"
+                f"Reply to an image/video/sticker with `{conf.CMD_PREFIX}asticker` to combine.\n"
+                f"Session expires in 300 seconds."
+            )
+
+        session = audio_sticker_sessions.get(chat_id)
+        if not session:
+            # Easy path: reply to a video/audio to convert directly
+            if not (replied := event.reply_to_message):
+                return await event.reply(
+                    "Reply to a video with audio, or use `--audio` to begin a session.\n"
+                    "For help send .asticker -h"
+                )
+            media = replied.video or replied.audio
+            if not media:
+                return await event.reply(
+                    "*Replied message is not a video or audio.*"
+                )
+            async with event.react("📥"):
+                file_bytes = await replied.download()
+            bot.client.me = me = await bot.client.get_me()
+            async with event.react("👩‍🏭"):
+                return await event.reply_audio_sticker(
+                    file_bytes,
+                    file_bytes,
+                    quote=True,
+                    name=(args or random.choice((enquip(), enquip4()))),
+                    packname=me.PushName,
+                )
+
+        # Session path: combine stored audio with replied sticker target
+        if time.time() - session["time"] > 300:
+            del audio_sticker_sessions[chat_id]
+            return await event.reply(
+                f"Audio sticker session timed out. Start a new one with `{conf.CMD_PREFIX}asticker --audio`."
+            )
+        if not (replied := event.reply_to_message):
+            return await event.reply(
+                "Reply to an image/video/sticker to use as the sticker target."
+            )
+        media = (
+            replied.sticker
+            or replied.image
+            or replied.video
+            or replied.document
+        )
+        if not media:
+            return await event.reply(
+                "*Replied message is not an image, video, gif, sticker, or media document.*"
+            )
+        async with event.react("📥"):
+            file_bytes = await replied.download()
+        bot.client.me = me = await bot.client.get_me()
+        del audio_sticker_sessions[chat_id]
+        async with event.react("👩‍🏭"):
+            return await event.reply_audio_sticker(
+                file_bytes,
+                session["audio_bytes"],
+                quote=True,
+                name=(args or random.choice((enquip(), enquip4()))),
+                packname=me.PushName,
             )
     except Exception:
         await logger(Exception)
@@ -3750,6 +3869,7 @@ bot.add_handler(upscale_image, "upscale")
 bot.add_handler(msg_ranking, "msg_ranking")
 bot.add_handler(stickerize_image, "sticker")
 bot.add_handler(sticker_to_image, "stick2img")
+bot.add_handler(audio_sticker, "asticker")
 bot.add_handler(upscale_album, "batch_upscale")
 bot.add_handler(list_reminders, "all_reminders")
 bot.add_handler(sanitize_video, "sanitize_video")

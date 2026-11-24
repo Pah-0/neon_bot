@@ -364,7 +364,10 @@ def get_args(*args, to_parse: str, get_unknown=False):
     )
     for arg in args:
         if isinstance(arg, list):
-            parser.add_argument(arg[0], action=arg[1], required=False)
+            if len(arg) > 2:
+                parser.add_argument(arg[0], arg[1], action=arg[2], required=False)
+            else:
+                parser.add_argument(arg[0], action=arg[1], required=False)
         else:
             parser.add_argument(arg, type=str, required=False)
     flag, unknowns = parser.parse_known_args(line_split(to_parse))

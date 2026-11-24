@@ -580,6 +580,40 @@ class Event(BaseEvent):
         msg = self.gen_new_msg(response)
         return construct_event(msg)
 
+    async def reply_audio_sticker(
+        self,
+        file: str | bytes,
+        audio: str | bytes,
+        quote: bool = True,
+        name: str = "",
+        packname: str = "",
+        crop: bool = False,
+        enforce_not_broken: bool = False,
+        animated_gif: bool = False,
+        quality: int = 75,
+        compression_level: int = 4,
+        passthrough: bool = False,
+        add_msg_secret: bool = False,
+    ) -> Event:
+        quoted = self._get_quoted() if quote else None
+        response = await self.client.send_audio_sticker(
+            self.chat.jid,
+            file,
+            audio,
+            quoted=quoted,
+            name=name,
+            packname=packname,
+            crop=crop,
+            enforce_not_broken=enforce_not_broken,
+            animated_gif=animated_gif,
+            quality=quality,
+            compression_level=compression_level,
+            passthrough=passthrough,
+            add_msg_secret=add_msg_secret,
+        )
+        msg = self.gen_new_msg(response)
+        return construct_event(msg)
+
     async def reply_stickerpack(
         self,
         files: list,
