@@ -559,6 +559,9 @@ class Event(BaseEvent):
         animated_gif: bool = False,
         quality: int = 75,
         compression_level: int = 4,
+        enforce_full_duration: bool = False,
+        min_quality: int = 30,
+        trim: float = 0,
         passthrough: bool = False,
         add_msg_secret: bool = False,
     ) -> Event:
@@ -574,6 +577,9 @@ class Event(BaseEvent):
             animated_gif=animated_gif,
             quality=quality,
             compression_level=compression_level,
+            enforce_full_duration=enforce_full_duration,
+            min_quality=min_quality,
+            trim=trim,
             passthrough=passthrough,
             add_msg_secret=add_msg_secret,
         )
@@ -592,7 +598,11 @@ class Event(BaseEvent):
         animated_gif: bool = False,
         quality: int = 75,
         compression_level: int = 4,
+        enforce_full_duration: bool = True,
+        min_quality: int = 30,
+        trim: float = 0.0,
         passthrough: bool = False,
+        truncate_audio_to_match_sticker: bool = False,
         add_msg_secret: bool = False,
     ) -> Event:
         quoted = self._get_quoted() if quote else None
@@ -608,7 +618,11 @@ class Event(BaseEvent):
             animated_gif=animated_gif,
             quality=quality,
             compression_level=compression_level,
+            enforce_full_duration=enforce_full_duration,
+            min_quality=min_quality,
+            trim=trim,
             passthrough=passthrough,
+            truncate_audio_to_match_sticker=truncate_audio_to_match_sticker,
             add_msg_secret=add_msg_secret,
         )
         msg = self.gen_new_msg(response)
@@ -624,6 +638,9 @@ class Event(BaseEvent):
         animated_gif: bool = False,
         quality: int = 75,
         compression_level: int = 4,
+        enforce_full_duration: bool = True,
+        min_quality: int = 30,
+        trim: float = 0.0,
         passthrough: bool = False,
         add_msg_secret: bool = False,
     ) -> Event:
@@ -638,6 +655,9 @@ class Event(BaseEvent):
             animated_gif=animated_gif,
             quality=quality,
             compression_level=compression_level,
+            enforce_full_duration=enforce_full_duration,
+            min_quality=min_quality,
+            trim=trim,
             passthrough=passthrough,
             add_msg_secret=add_msg_secret,
         )

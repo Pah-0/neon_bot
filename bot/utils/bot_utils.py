@@ -5,6 +5,7 @@ import io
 import itertools
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -973,6 +974,13 @@ def is_valid_video_timestamp(s: str) -> bool:
 
     # Hours (if present) must be >=0 (no upper limit)
     return not (len(parts) == 3 and parts[0] < 0)
+
+
+def is_finite_float(value: str) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except ValueError:
+        return False
 
 
 async def read_binary(path: str):

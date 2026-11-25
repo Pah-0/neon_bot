@@ -44,6 +44,7 @@ from bot.utils.bot_utils import (
     get_mediainfo,
     human_format_num,
     image_to_png,
+    is_finite_float,
     is_video_file,
     list_to_str,
     png_to_jpg,
@@ -134,7 +135,7 @@ purge_sessions = {}
 audio_sticker_sessions = {}
 
 
-async def tools(event, args, client):
+async def tools(event: Event, args: str, client):
     """Show the list of available tools/commands."""
     try:
         pre = conf.CMD_PREFIX
@@ -212,7 +213,7 @@ async def tools(event, args, client):
         await event.react("❌")
 
 
-async def to_doc(event, args, client):
+async def to_doc(event: Event, args: str, client):
     """
     Convert a replied image, video or sticker to a document.
     Must be used as a reply; the original caption is kept.
@@ -367,7 +368,7 @@ def mp3_name(tags: dict[str, str]) -> str:
     return re.sub(r"\s+", " ", name).strip()[:120] + ".mp3"
 
 
-async def to_mp3(event, args, client):
+async def to_mp3(event: Event, args: str, client):
     """
     Convert a replied video or audio (or video/audio document) to mp3.
     Arguments:
@@ -452,12 +453,12 @@ async def to_mp3(event, args, client):
         await event.react("❌")
 
 
-async def getfps(event, args, client):
+async def getfps(event: Event, args: str, client):
     "Get the fps of a replied video, video/gif document or animated sticker."
     return await vinfo(event, "fps", client)
 
 
-async def getminfo(event, args, client):
+async def getminfo(event: Event, args: str, client):
     """
     Get the mediainfo of a replied video, video/gif document or animated sticker.
     Sent as a Telegraph link by default.
@@ -584,7 +585,7 @@ async def vinfo(event: Event, args: str, client):
 comp_sem = asyncio.Semaphore(4)
 
 
-async def compress(event, args, client):
+async def compress(event: Event, args: str, client):
     """
     Compress a replied video (or video document).
     Returns an AV1 (or HEVC) mkv as a document.
@@ -708,7 +709,7 @@ async def compress(event, args, client):
         await event.react("❌")
 
 
-async def sticker_reply(event, args, client, overide=False):
+async def sticker_reply(event: Event, args: str, client, overide=False):
     """
     Sends a random sticker upon being tagged
     """
@@ -750,7 +751,7 @@ async def sticker_reply(event, args, client, overide=False):
         await event.react("❌")
 
 
-async def sanitize_url(event, args, client):
+async def sanitize_url(event: Event, args: str, client):
     """
     Remove tracking parameters from all links in a replied message
     and resend the message with the cleaned links.
@@ -800,7 +801,7 @@ async def sanitize_url(event, args, client):
             await status_msg.delete()
 
 
-async def markdown_to_wa(event, args, client):
+async def markdown_to_wa(event: Event, args: str, client):
     """
     Clean up Markdown pasted from Discord, GitHub and the like for WhatsApp:
     # headers and **bold** become *bold*, *italic* _italic_, ~~strike~~ ~strike~,
@@ -868,7 +869,7 @@ async def toggle_auto_markdown(event, client):
         await event.react("❌")
 
 
-async def screenshot(event, args, client):
+async def screenshot(event: Event, args: str, client):
     """
     Screenshot every link in a replied message.
     Without a reply, screenshots the link(s) given as argument.
@@ -924,7 +925,7 @@ async def screenshot(event, args, client):
         await event.react("")
 
 
-async def screenshot_comments_(event, args, client):
+async def screenshot_comments_(event: Event, args: str, client):
     """
     Take a long screenshot of the top comments of every X or
     YouTube post linked in a replied message.
@@ -998,7 +999,7 @@ async def screenshot_comments_(event, args, client):
         await event.react("")
 
 
-async def kang_sticker(event, args, client):
+async def kang_sticker(event: Event, args: str, client):
     """
     Kang a replied sticker (resend it under the bot's pack name).
     Arguments:
@@ -1043,7 +1044,9 @@ async def stickerize_image(event: Event, args: str, client):
         -cl: compression level (1-6), default 4
         -c: crop
         -f: force animated gif mode
+        -t: trim sticker from start, max 10
         -nl: skip the not-broken check (single stickers only)
+        -nf: dont enforce full duration
     """
     user = event.from_user.id
     if not user_is_privileged(user):
@@ -1055,17 +1058,22 @@ async def stickerize_image(event: Event, args: str, client):
         args_ = args
         quality = 75
         compression_level = 4
+        enforce_full_duration = True
+        trim = 0.0
         if args:
             arg, args = get_args(
                 "-q",
+                "-t",
                 "-cl",
                 ["-nl", "store_false"],
+                ["-nf", "store_false"],
                 ["-c", "store_true"],
                 ["-f", "store_true"],
                 to_parse=args,
                 get_unknown=True,
             )
             crop = arg.c
+            enforce_full_duration = arg.nf
             forced = arg.f
             limit = arg.nl
             if q := arg.q:
@@ -1073,6 +1081,13 @@ async def stickerize_image(event: Event, args: str, client):
                     await event.reply(f"-q: argument requires a digit not {q}")
                 else:
                     quality = int(q)
+            if t := arg.t:
+                if not is_finite_float(t):
+                    await event.reply(f"-t: argument requires a digit not {t}")
+                else:
+                    trim = float(t)
+                    if trim >= 10:
+                        trim = 0
             if cl := arg.cl:
                 if not cl.isdigit():
                     await event.reply(f"-cl: argument requires a digit not {cl}")
@@ -1110,6 +1125,9 @@ async def stickerize_image(event: Event, args: str, client):
                 animated_gif=forced,
                 quality=quality,
                 compression_level=compression_level,
+                enforce_full_duration=enforce_full_duration,
+                min_quality=30,
+                trim=trim,
             )
     except Exception:
         await logger(Exception)
@@ -1125,27 +1143,40 @@ async def stickerize_album(event: Event, args: str, client):
         -cl: compression level (1-6), default 4
         -c: crop
         -f: force animated gif mode
+        -t: trim sticker from start, max 10
+        -nf: dont enforce full duration
     """
     try:
         quality = 75
         compression_level = 4
+        trim = 0.0
         if args:
             arg, args = get_args(
                 "-q",
+                "-t",
                 "-cl",
                 ["-nl", "store_false"],  # single stickers only; ignored here
+                ["-nf", "store_false"],
                 ["-c", "store_true"],
                 ["-f", "store_true"],
                 to_parse=args,
                 get_unknown=True,
             )
             crop = arg.c
+            enforce_full_duration = arg.nf
             forced = arg.f
             if q := arg.q:
                 if not q.isdigit():
                     await event.reply(f"-q: argument requires a digit not {q}")
                 else:
                     quality = int(q)
+            if t := arg.t:
+                if not is_finite_float(t):
+                    await event.reply(f"-t: argument requires a digit not {t}")
+                else:
+                    trim = float(t)
+                    if trim >= 10:
+                        trim = 0
             if cl := arg.cl:
                 if not cl.isdigit():
                     await event.reply(f"-cl: argument requires a digit not {cl}")
@@ -1153,6 +1184,7 @@ async def stickerize_album(event: Event, args: str, client):
                     compression_level = int(cl)
         else:
             crop = False
+            enforce_full_duration = True
             forced = False
         replied = event.reply_to_message
         async with event.react("🗂️"):
@@ -1174,6 +1206,9 @@ async def stickerize_album(event: Event, args: str, client):
                 animated_gif=forced,
                 quality=quality,
                 compression_level=compression_level,
+                enforce_full_duration=enforce_full_duration,
+                min_quality=30,
+                trim=trim,
             )
     except Exception:
         await logger(Exception)
@@ -1197,6 +1232,7 @@ async def audio_sticker(event: Event, args: str, client):
         -a/--audio: start an audio-sticker session (reply to audio or video)
         -c/--cancel: cancel an active session
         -q: quality (1-100), default 75
+        -t: trim from start, max 10
         -cl: compression level (1-6), default 4
         -cr: crop
         -f: force animated gif mode
@@ -1210,9 +1246,11 @@ async def audio_sticker(event: Event, args: str, client):
             return await event.react("⛔")
     chat_id = event.chat.id
     quality = 75
+    trim = 0.0
     compression_level = 4
     arg, args = get_args(
         "-q",
+        "-t",
         "-cl",
         ["-nl", "store_false"],
         ["-cr", "store_true"],
@@ -1230,6 +1268,14 @@ async def audio_sticker(event: Event, args: str, client):
             await event.reply(f"-q: argument requires a digit not {q}")
         else:
             quality = int(q)
+
+    if t := arg.t:
+        if not is_finite_float(t):
+            await event.reply(f"-t: argument requires a digit not {t}")
+        else:
+            trim = float(t)
+            if trim >= 10:
+                trim = 0
     if cl := arg.cl:
         if not cl.isdigit():
             await event.reply(f"-cl: argument requires a digit not {cl}")
@@ -1283,6 +1329,9 @@ async def audio_sticker(event: Event, args: str, client):
                     animated_gif=forced,
                     quality=quality,
                     compression_level=compression_level,
+                    enforce_full_duration=True,
+                    min_quality=20,
+                    trim=trim,
                 )
 
         # Session path: combine stored audio with replied sticker target
@@ -1319,13 +1368,18 @@ async def audio_sticker(event: Event, args: str, client):
                 animated_gif=forced,
                 quality=quality,
                 compression_level=compression_level,
+                enforce_full_duration=True,
+                min_quality=20,
+                trim=trim,
+                passthrough=bool(replied.sticker),
+                truncate_audio_to_match_sticker=True,
             )
     except Exception:
         await logger(Exception)
         await event.react("❌")
 
 
-async def sticker_to_image(event, args, client):
+async def sticker_to_image(event: Event, args: str, client):
     "Convert a replied sticker to an image (png), or a gif if animated."
     user = event.from_user.id
     if not user_is_privileged(user):
@@ -1367,7 +1421,7 @@ async def sticker_to_image(event, args, client):
         await event.react("❌")
 
 
-async def undelete(event, args, client):
+async def undelete(event: Event, args: str, client):
     """
     Resend recently deleted messages in this group. Group only.
     Arguments:
@@ -1813,7 +1867,7 @@ def list_items(items, ini):
     return msg
 
 
-async def list_notes(event, args, client):
+async def list_notes(event: Event, args: str, client):
     """
     List the notes saved in this chat.
     Arguments:
@@ -1956,7 +2010,7 @@ async def save_notes(event: Event, args: str | None, client, silent=False):
         await event.react("❌")
 
 
-async def get_notes(event, args, client):
+async def get_notes(event: Event, args: str, client):
     """
     Get a saved note, or list the notes in this chat.
     Arguments:
@@ -2018,7 +2072,7 @@ async def get_notes(event, args, client):
         await event.react("❌")
 
 
-async def delete_notes(event, args, client):
+async def delete_notes(event: Event, args: str, client):
     """
     Delete a saved note in this chat.
     Arguments:
@@ -2068,7 +2122,7 @@ async def delete_notes(event, args, client):
         await event.react("❌")
 
 
-async def get_notes2(event, args, client):
+async def get_notes2(event: Event, args: str, client):
     """
     Get notes with #: #note_name gets a note, #notes lists all notes,
     #my notes lists your notes.
@@ -2096,7 +2150,7 @@ async def get_notes2(event, args, client):
         await event.react("❌")
 
 
-async def tag_all_admins(event, args, client):
+async def tag_all_admins(event: Event, args: str, client):
     """
     Tag group admins when a message contains @admin(s) or @mod(s).
     Plural form tags all admins; singular tags only the first.
@@ -2130,7 +2184,7 @@ async def tag_all_admins(event, args, client):
         await event.react("❌")
 
 
-async def tag_all_sudoers(event, args, client):
+async def tag_all_sudoers(event: Event, args: str, client):
     """
     Tag bot sudoers when a group message contains @sudoer(s).
     Plural form tags all sudoers; singular tags only the first.
@@ -2164,7 +2218,7 @@ async def tag_all_sudoers(event, args, client):
         await event.react("❌")
 
 
-async def tag_all_owners(event, args, client):
+async def tag_all_owners(event: Event, args: str, client):
     """
     Tag bot owners when a group message contains @owner(s).
     Plural form tags all owners; singular tags only the first.
@@ -2198,7 +2252,7 @@ async def tag_all_owners(event, args, client):
         await event.react("❌")
 
 
-async def tag_everyone(event: Event, args, client):
+async def tag_everyone(event: Event, args: str, client):
     """
     Tag everyone in a group when an Owner/Sudo/Admin sends @all or @everyone.
     WhatsApp's own @all tags get a reaction, or are deleted from
@@ -2244,7 +2298,7 @@ async def tag_everyone(event: Event, args, client):
         await event.react("❌")
 
 
-async def pin_message(event, args, client):
+async def pin_message(event: Event, args: str, client):
     """
     [Owner | Sudo | Admin] Pin a replied message. Group only.
     Arguments:
@@ -2276,7 +2330,7 @@ async def pin_message(event, args, client):
         await event.react("❌")
 
 
-async def unpin_message(event, args, client):
+async def unpin_message(event: Event, args: str, client):
     "[Owner | Sudo | Admin] Unpin a replied message. Group only."
     if not event.chat.is_group:
         return await event.react("🚫")
@@ -2302,7 +2356,7 @@ async def unpin_message(event, args, client):
         await event.react("❌")
 
 
-async def purge_messages(event, args, client):
+async def purge_messages(event: Event, args: str, client):
     """
     [Owner | Admin] Delete a range of messages. Group only; bot must be admin.
     Usage (always as a reply):
@@ -2390,7 +2444,7 @@ async def purge_messages(event, args, client):
 MEMBER_LABEL_CHANGE = 30
 
 
-async def rec_member_label(event, args, client):
+async def rec_member_label(event: Event, args: str, client):
     """
     Remembers group members' tags (WhatsApp member labels) as they appear on
     their messages or change, for .quote; WhatsApp has no way to ask for them.
@@ -2439,7 +2493,7 @@ async def rec_member_label(event, args, client):
         await logger(Exception)
 
 
-async def tag_alerts(event, args, client):
+async def tag_alerts(event: Event, args: str, client):
     """
     [Owner | Sudo | Admin] Announce in this group when members set, change or
     remove their group tag. Group only. With no arguments, shows the setting.
@@ -2472,7 +2526,7 @@ async def tag_alerts(event, args, client):
         await event.react("❌")
 
 
-async def set_bot_tag(event, args, client):
+async def set_bot_tag(event: Event, args: str, client):
     """
     [Owner | Sudo | Admin | Self] Set the bot's group tag (member label) in
     this group. Group only.
@@ -2528,7 +2582,7 @@ async def set_bot_tag(event, args, client):
         await event.react("❌")
 
 
-async def rec_msg_ranking(event, args, client):
+async def rec_msg_ranking(event: Event, args: str, client):
     """
     Helper for the message leaderboard
     """
@@ -2553,7 +2607,7 @@ async def rec_msg_ranking(event, args, client):
         await logger(Exception)
 
 
-async def msg_ranking(event, args, client):
+async def msg_ranking(event: Event, args: str, client):
     """
     Get this group's message leaderboard as a card. Group only.
     Arguments:
@@ -2962,7 +3016,7 @@ async def save_filter(event: Event, args: str, client):
         await event.react("❌")
 
 
-async def list_filters(event, args, client):
+async def list_filters(event: Event, args: str, client):
     """
     List the filters saved in this group. Group only.
     Arguments:
@@ -3013,7 +3067,7 @@ async def list_filters(event, args, client):
         await event.react("❌")
 
 
-async def delete_filters(event, args, client):
+async def delete_filters(event: Event, args: str, client):
     """
     Delete a saved filter in this group. Group only.
     Arguments:
@@ -3061,7 +3115,7 @@ async def delete_filters(event, args, client):
         await event.react("❌")
 
 
-async def detect_filters(event, args, client):
+async def detect_filters(event: Event, args: str, client):
     """
     Reply with saved filters that match a group message (max 2 per message).
     AUTO FUNCTION
@@ -3100,7 +3154,7 @@ async def detect_filters(event, args, client):
         # await event.react("❌")
 
 
-async def get_filters(event, args, client):
+async def get_filters(event: Event, args: str, client):
     chat = event.chat.id
     if not (filters := bot.filters_dict.get(chat)):
         return
@@ -3340,7 +3394,7 @@ async def tikmate(event: Event, args: str, client):
         raise StopHandlers
 
 
-async def set_rules(event, args, client):
+async def set_rules(event: Event, args: str, client):
     """
     [Admins Only] Set the group rules. Group only.
     Usage:
@@ -3382,7 +3436,7 @@ async def set_rules(event, args, client):
         await logger(Exception)
 
 
-async def delete_rules(event, args, client):
+async def delete_rules(event: Event, args: str, client):
     """
     [Admins Only] Delete the group rules. Group only.
     Note: Does not delete the "rules" note if one was set!
@@ -3411,7 +3465,7 @@ async def delete_rules(event, args, client):
         await logger(Exception)
 
 
-async def set_welcome(event, args, client):
+async def set_welcome(event: Event, args: str, client):
     """
     [Admins Only] Set the group welcome message. Group only.
     Usage:
@@ -3457,7 +3511,7 @@ async def set_welcome(event, args, client):
         await logger(Exception)
 
 
-async def get_welcome(event, args, client):
+async def get_welcome(event: Event, args: str, client):
     """
     [Admins Only] Get the group welcome message as it was set, unformatted. Group only.
     """
@@ -3488,7 +3542,7 @@ async def get_welcome(event, args, client):
         await logger(Exception)
 
 
-async def unset_welcome(event, args, client):
+async def unset_welcome(event: Event, args: str, client):
     """
     [Admins Only] Unset the group welcome message. Group only.
     Note: Does not delete the "welcome" note if one was set!
@@ -3517,7 +3571,7 @@ async def unset_welcome(event, args, client):
         await logger(Exception)
 
 
-async def get_rules(event, args, client):
+async def get_rules(event: Event, args: str, client):
     """
     Get this group's rules sent to you in PM. Group only.
     """
@@ -3632,7 +3686,7 @@ async def save_reminder(event: Event, args: str, client):
         await logger(Exception)
 
 
-async def list_reminders(event, args, client):
+async def list_reminders(event: Event, args: str, client):
     """
     List your reminders in this chat, with their IDs.
     """
@@ -3660,7 +3714,7 @@ async def list_reminders(event, args, client):
         await logger(Exception)
 
 
-async def delete_reminders(event, args, client):
+async def delete_reminders(event: Event, args: str, client):
     """
     Delete your reminders in this chat.
     Get IDs with: all_reminders
@@ -3767,7 +3821,7 @@ async def auto_del_msg(event: Event, _, client):
             pass
 
 
-async def test_button(event, args, client):
+async def test_button(event: Event, args: str, client):
     user = event.from_user.id
     if not (user_is_privileged(user)):
         if not chat_is_allowed(event):
@@ -3806,7 +3860,7 @@ async def test_button(event, args, client):
 native_button_tests: dict[str, dict] = {}
 
 
-async def test_native_buttons(event, args, client):
+async def test_native_buttons(event: Event, args: str, client):
     """
     [Owner | Sudo] Send a message with real (native-flow) quick-reply buttons,
     to see whether WhatsApp shows them, and report which one is pressed.
@@ -3844,7 +3898,7 @@ async def test_native_buttons(event, args, client):
         await event.reply(f"*Error:*\n{e}")
 
 
-async def native_button_press(event, args, client):
+async def native_button_press(event: Event, args: str, client):
     """
     Answers presses on nbutton test messages.
     AUTO FUNCTION
