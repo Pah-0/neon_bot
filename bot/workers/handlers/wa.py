@@ -2498,7 +2498,9 @@ async def set_bot_tag(event, args, client):
                 )
         label = "" if args.casefold() == "-rm" else args.strip()
         # Sent like a member's own tag change; an empty label removes it
-        show_admin_badge = user_is_admin(bot.client.me.JID.User, group_info.Participants)
+        show_admin_badge = user_is_admin(
+            bot.client.me.JID.User, group_info.Participants
+        )
         await client.send_message(
             event.chat.jid,
             Message(
