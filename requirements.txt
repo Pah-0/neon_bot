@@ -28,9 +28,9 @@ sqlalchemy
 urlextract
 w3lib
 Wand
-yt-dlp[default,curl-cffi]
+yt-dlp[default,curl-cffi]>=2026.11.23
 zendriver
-git+https://github.com/Pah-0/neonize@0.3.13.3
+git+https://github.com/Pah-0/neonize@0.3.13.5-1
 git+https://github.com/Pah-0/python-anilist
 git+https://github.com/biggestsonicfan/yt-dlp-community-plugin
 objection_engine[languages] @ git+https://github.com/Pah-0/objection_engine
