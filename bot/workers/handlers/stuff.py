@@ -152,6 +152,7 @@ async def manage_cmds(event, args, client):
 {pre}autolock - *[Owner | Sudo | Admin] Make the group admins-only every day between two times, e.g. 22:00 7:00 Africa/Lagos (time zone optional; off to stop)*
 {pre}enable_atd - *[Owner | Sudo | Admin] Enables Auto deletion of @all tags*
 {pre}disable_atd - *[Owner | Sudo | Admin] Disables Auto deletion of @all tags*
+{pre}nsfw_block - *[Owner | Sudo | Admin] Turn NSFW blocking on or off in this group (on/off)*
 
 *Group:*
 {pre}enable - *[Owner | Sudo | Admin] Enable bot in a GC*

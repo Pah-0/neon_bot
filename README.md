@@ -145,6 +145,7 @@ Each sends buttons to pick from when several titles match (or a poll if buttons 
 - `.warn <user|@mention> [reason] [-d]`: Warn members (replying to their message makes it the reason; `-d` deletes it). At the warn limit they're removed. `.warns`, `.resetwarns` and `.warnlimit <n>` (default 3, `0` never removes) manage warnings.
 - `.captcha [on|off] [-t minutes]`: Members who join through a link or request must send the code from a captcha picture; their other messages are deleted until they do, and they're removed after 3 wrong answers or when time runs out (default 5 minutes). People added by a member, or approved by an admin, are let through.
 - `.enable_atd` / `.disable_atd`: Toggle auto-deleting mass tags.
+- `.nsfw_block [on|off]`: Turn NSFW blocking on or off in this group (overrides the global `BLOCK_NSFW` setting).
 - `.ytdl_enable` / `.ytdl_disable`: Toggle the auto downloader in a chat.
 - `.enable` / `.disable`: Enable or disable bot replies in a group.
 - `.undel`: Retrieve deleted messages.
