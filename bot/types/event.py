@@ -18,13 +18,14 @@ from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import (
 )
 from neonize.types import MessageWithContextInfo
 
-from bot import JID, MessageEv, NewAClient, base_msg_info, base_msg_source
+from bot import JID, MessageEv, NewAClient, base_msg_info, base_msg_source, jid
 
 # --- Base Interfaces with default __init__ ---
 
 
 class BaseUser(ABC):
     def __init__(self):
+        self._jid: JID | None = None
         self.name: str = ""
         self.jid: JID | None = None
         self.id: str = ""
@@ -199,13 +200,14 @@ class User(BaseUser):
 
     def construct(self, info: base_msg_info, alt: bool = False):
         self.name = info.Pushname
-        self.jid = (
+        self._jid = (
             info.MessageSource.Sender if not alt else info.MessageSource.SenderAlt
         )
-        if self.jid == JID():
-            self.jid = None
+        if self._jid == JID():
+            self._jid = None
             self.is_empty = True
             return
+        self.jid = jid.JIDToNonAD(self._jid)
         self.id = self.jid.User
         self.is_empty = self.jid.IsEmpty
         self.server = self.jid.Server
